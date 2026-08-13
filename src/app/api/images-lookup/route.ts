@@ -34,22 +34,23 @@ export async function POST(req: Request) {
 
     await connectDB();
 
-    const productMap: Record<string, string> = {};
+    const productMap: Record<string, { imageUrl?: string, itemType?: string }> = {};
 
     // ── Layer 1: exact match on designNumber ──────────────────────────
     // Uses the raw PDF string (e.g. "TRPD073-c") which is exactly what MongoDB
     // stores in the designNumber field.
     const layer1 = await Product.find({
       designNumber: { $in: designNumbers }
-    }).select('designNumber imageUrl').lean() as any[];
+    }).select('designNumber imageUrl itemType').lean() as any[];
 
     const foundByLayer1 = new Set<string>();
 
     for (const p of layer1) {
-      if (!p.imageUrl) continue;
-
       if (p.designNumber && designNumbers.includes(p.designNumber)) {
-        productMap[p.designNumber] = p.imageUrl;
+        productMap[p.designNumber] = {
+          imageUrl: p.imageUrl,
+          itemType: p.itemType
+        };
         foundByLayer1.add(p.designNumber);
       }
     }
@@ -86,19 +87,22 @@ export async function POST(req: Request) {
 
       const layer2 = await Product.find({
         imageName: { $in: imageNamesToSearch },
-      }).select('imageName imageUrl').lean() as any[];
+      }).select('imageName imageUrl itemType').lean() as any[];
 
       for (const p of layer2) {
-        if (!p.imageUrl || !p.imageName) continue;
+        if (!p.imageName) continue;
 
         // Strip the file extension to recover the base design number.
         const base = (p.imageName as string).replace(/\.[^.]+$/, "");
 
-        // Map the imageUrl back to every raw design number that strips to this base.
+        // Map the data back to every raw design number that strips to this base.
         const raws = baseToRaws.get(base) ?? baseToRaws.get(base.toLowerCase());
         if (raws) {
           for (const raw of raws) {
-            productMap[raw] = p.imageUrl;
+            productMap[raw] = {
+              imageUrl: p.imageUrl,
+              itemType: p.itemType
+            };
           }
         }
       }

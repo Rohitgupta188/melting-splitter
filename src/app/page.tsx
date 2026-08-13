@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   Upload,
   FileDown,
@@ -13,12 +13,17 @@ import {
   Zap,
   Archive,
   Loader2,
+  FolderTree,
+  Flame,
+  Files,
+  Circle,
+  CheckCircle2,
 } from "lucide-react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 
 import { parsePDF } from "@/lib/pdf-parser";
-import { groupRows, GroupedData } from "@/lib/grouping";
+import { groupRows, GroupedData, SplitMode } from "@/lib/grouping";
 import {
   resolveImages,
   getImageStats,
@@ -84,6 +89,8 @@ export default function Home() {
   const [errorMsg,      setErrorMsg]      = useState<string | null>(null);
   const [selectedFile,  setSelectedFile]  = useState<File | null>(null);
   const [stageDetail,   setStageDetail]   = useState<string>("");
+  const [splitMode,     setSplitMode]     = useState<SplitMode>("category");
+  const [outputMode,    setOutputMode]    = useState<"individual" | "combined">("individual");
 
   // Intermediate state
   const [rawRows,        setRawRows]        = useState<ParsedRow[]>([]);
@@ -93,6 +100,13 @@ export default function Home() {
   const [zipBlob,        setZipBlob]        = useState<Blob | null>(null);
 
   const isProcessing = ACTIVE_STAGES.has(stage) || stage === "REVIEW_GROUPS";
+
+  // Re-group if the user changes split mode during review
+  useEffect(() => {
+    if (stage === "REVIEW_GROUPS" && rawRows.length > 0) {
+      setGroups(groupRows(rawRows, splitMode));
+    }
+  }, [splitMode, stage, rawRows]);
 
   // ── Validation ─────────────────────────────────────────────────────────────
 
@@ -134,18 +148,24 @@ export default function Home() {
         throw new Error("No valid product rows found in the PDF.");
       }
 
-      const grouped = groupRows(rows);
+      setStage("FETCHING_IMAGES");
+      setStageDetail(`Looking up ${[...new Set(rows.map(r => r.rawDesignNumber))].length} unique products from database…`);
+      await resolveImages(rows);
+
+      const grouped = groupRows(rows, splitMode);
       setRawRows(rows);
       setGroups(grouped);
       setQuotationHeader(header);
-      setStageDetail(`Found ${rows.length} items across ${grouped.length} group${grouped.length !== 1 ? "s" : ""}.`);
+      
+      const imgStats = getImageStats();
+      setStageDetail(`Fetched ${imgStats.fetched} images. Found ${rows.length} items across ${grouped.length} categories.`);
       setStage("REVIEW_GROUPS");
     } catch (err: any) {
       console.error("[page] parse error:", err);
       setErrorMsg(err?.message ?? "Processing failed. Please try again.");
       setStage("ERROR");
     }
-  }, []);
+  }, [splitMode]);
 
   // ── Phase 2: Generate PDFs ─────────────────────────────────────────────────
 
@@ -153,17 +173,30 @@ export default function Home() {
     const startTime = performance.now();
 
     try {
-      // Fetch images
-      setStage("FETCHING_IMAGES");
-      setStageDetail(`Looking up ${[...new Set(rawRows.map(r => r.rawDesignNumber))].length} unique products…`);
-      await resolveImages(rawRows);
-
       const imgStats = getImageStats();
-      setStageDetail(`Fetched ${imgStats.fetched} · Cached ${imgStats.cached} · Missing ${imgStats.missing}`);
 
       // Generate PDFs
       setStage("GENERATING_PDFS");
-      const finalGroups = groupRows(rawRows); // re-group with imageUrls assigned
+      // Only process groups that were selected by the user
+      const finalGroups = groups.filter(g => g.selected !== false);
+
+      let processGroups = finalGroups;
+      
+      if (outputMode === "combined" && finalGroups.length > 0) {
+        const combinedName = finalGroups.map(g => g.groupName).join(", ");
+        const shortName = combinedName.length > 40 ? "Combined Items" : combinedName;
+        
+        const combinedGroup: GroupedData = {
+          groupName: shortName,
+          items: finalGroups.flatMap(g => g.items),
+          totalQty: finalGroups.reduce((acc, g) => acc + g.totalQty, 0),
+          totalGrossWt: finalGroups.reduce((acc, g) => acc + g.totalGrossWt, 0),
+          totalNetWt: finalGroups.reduce((acc, g) => acc + g.totalNetWt, 0),
+          totalStoneWt: finalGroups.reduce((acc, g) => acc + g.totalStoneWt, 0),
+          selected: true
+        };
+        processGroups = [combinedGroup];
+      }
 
       const zip = new JSZip();
       
@@ -172,9 +205,9 @@ export default function Home() {
       const qNo = cleanName(quotationHeader.quotationNo || "Quotation");
       const suffix = `${custName} ${qNo}`.trim();
 
-      for (let i = 0; i < finalGroups.length; i++) {
-        const g = finalGroups[i];
-        setStageDetail(`Generating PDF ${i + 1} of ${finalGroups.length}: ${g.groupName}`);
+      for (let i = 0; i < processGroups.length; i++) {
+        const g = processGroups[i];
+        setStageDetail(`Generating PDF ${i + 1} of ${processGroups.length}: ${g.groupName}`);
         const pdfBlob = await generateGroupPdfBlob(g, quotationHeader);
         const groupNameClean = cleanName(g.groupName);
         zip.file(`${groupNameClean} - ${suffix}.pdf`, pdfBlob);
@@ -193,7 +226,7 @@ export default function Home() {
         totalRows:      rawRows.length,
         groups:         finalGroups,
         imageStats:     imgStats,
-        pdfsGenerated:  finalGroups.length,
+        pdfsGenerated:  processGroups.length,
         elapsedSeconds: elapsed,
       });
       setStage("COMPLETED");
@@ -202,7 +235,7 @@ export default function Home() {
       setErrorMsg(err?.message ?? "Processing failed. Please try again.");
       setStage("ERROR");
     }
-  }, [rawRows, quotationHeader]);
+  }, [rawRows, quotationHeader, splitMode, groups, outputMode]);
 
   // ── Event handlers ─────────────────────────────────────────────────────────
 
@@ -359,16 +392,105 @@ export default function Home() {
               <div className="ms-review">
                 <p className="ms-review-summary">{stageDetail}</p>
 
-                <div className="ms-group-list" role="list" aria-label="Detected groups">
-                  {groups.map(g => (
-                    <div key={g.groupName} className="ms-group-row" role="listitem">
-                      <span className="ms-group-name">{g.groupName}</span>
-                      <span className="ms-group-meta">
-                        {g.items.length} item{g.items.length !== 1 ? "s" : ""}
-                        &nbsp;·&nbsp;{g.totalQty} qty
-                      </span>
-                    </div>
-                  ))}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: "1.5rem" }}>
+                  <div style={{ display: "flex", background: "var(--ms-bg)", padding: "0.4rem", borderRadius: "8px", border: "1px solid var(--ms-border)", gap: "0.4rem" }}>
+                    <button
+                      onClick={() => setSplitMode("category")}
+                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: splitMode === "category" ? 600 : 400, background: splitMode === "category" ? "var(--ms-primary)" : "transparent", color: splitMode === "category" ? "white" : "var(--ms-text-2)", transition: "all 0.2s" }}
+                    >
+                      <FolderTree size={16} /> Category
+                    </button>
+                    <button
+                      onClick={() => setSplitMode("melting")}
+                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: splitMode === "melting" ? 600 : 400, background: splitMode === "melting" ? "var(--ms-primary)" : "transparent", color: splitMode === "melting" ? "white" : "var(--ms-text-2)", transition: "all 0.2s" }}
+                    >
+                      <Flame size={16} /> Melting
+                    </button>
+                  </div>
+                  <p style={{ marginTop: "0.75rem", fontSize: "0.85rem", color: "var(--ms-text-2)" }}>
+                    {groups.length} {splitMode === "category" ? "categories" : "melting groups"} found • {outputMode === "combined" && groups.filter(g => g.selected !== false).length > 0 ? 1 : groups.filter(g => g.selected !== false).length} PDF{ (outputMode === "combined" && groups.filter(g => g.selected !== false).length > 0 ? 1 : groups.filter(g => g.selected !== false).length) !== 1 ? "s" : "" } will be generated
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "0.5rem" }}>
+                  <h3 style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--ms-text-1)", margin: 0, textTransform: "uppercase", letterSpacing: "0.05em" }}>Categories</h3>
+                  <div style={{ display: "flex", gap: "1rem" }}>
+                    <button onClick={() => setGroups(groups.map(g => ({ ...g, selected: true })))} style={{ background: "none", border: "none", color: "var(--ms-primary)", cursor: "pointer", fontSize: "0.85rem", padding: 0 }}>Select All</button>
+                    <button onClick={() => setGroups(groups.map(g => ({ ...g, selected: false })))} style={{ background: "none", border: "none", color: "var(--ms-text-2)", cursor: "pointer", fontSize: "0.85rem", padding: 0 }}>Clear All</button>
+                  </div>
+                </div>
+
+                <div className="ms-group-table-wrapper" style={{ overflowX: "auto", marginBottom: "1.5rem", border: "1px solid var(--ms-border)", borderRadius: "8px" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "0.85rem" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid var(--ms-border)", color: "var(--ms-text-2)" }}>
+                        <th style={{ padding: "0.75rem 1rem", width: "40px", textAlign: "center" }}></th>
+                        <th style={{ padding: "0.75rem 1rem", width: "40px" }}>Sr.</th>
+                        <th style={{ padding: "0.75rem 1rem" }}>{splitMode === "category" ? "Item Type" : "Melting"}</th>
+                        <th style={{ padding: "0.75rem 1rem", textAlign: "center" }}>Qty</th>
+                        <th style={{ padding: "0.75rem 1rem", textAlign: "right" }}>Gross Wt</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {groups.map((g, i) => {
+                        const isSelected = g.selected !== false;
+                        return (
+                          <tr 
+                            key={g.groupName} 
+                            onClick={() => {
+                              const newGroups = [...groups];
+                              newGroups[i].selected = !isSelected;
+                              setGroups(newGroups);
+                            }}
+                            style={{ 
+                              cursor: "pointer", 
+                              borderBottom: i === groups.length - 1 ? "none" : "1px solid var(--ms-border)", 
+                              background: isSelected ? "color-mix(in srgb, var(--ms-primary) 10%, transparent)" : "transparent",
+                              transition: "background 0.15s"
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = "var(--ms-bg)";
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = "transparent";
+                            }}
+                          >
+                            <td style={{ padding: "0.75rem 1rem", textAlign: "center", color: isSelected ? "var(--ms-primary)" : "var(--ms-text-3)" }}>
+                              {isSelected ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+                            </td>
+                            <td style={{ padding: "0.75rem 1rem", color: "var(--ms-text-2)" }}>{i + 1}</td>
+                            <td style={{ padding: "0.75rem 1rem", fontWeight: 500, color: "var(--ms-text-1)" }}>{g.groupName}</td>
+                            <td style={{ padding: "0.75rem 1rem", textAlign: "center" }}>{g.totalQty}</td>
+                            <td style={{ padding: "0.75rem 1rem", textAlign: "right", color: "var(--ms-text-2)" }}>{g.totalGrossWt.toFixed(3)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot style={{ background: "var(--ms-bg)", borderTop: "2px solid var(--ms-border)", fontWeight: 600 }}>
+                      <tr>
+                        <td colSpan={3} style={{ padding: "0.75rem 1rem", textAlign: "right" }}>Total</td>
+                        <td style={{ padding: "0.75rem 1rem", textAlign: "center" }}>{groups.reduce((acc, g) => acc + (g.selected !== false ? g.totalQty : 0), 0)}</td>
+                        <td style={{ padding: "0.75rem 1rem", textAlign: "right" }}>Approx. {groups.reduce((acc, g) => acc + (g.selected !== false ? g.totalGrossWt : 0), 0).toFixed(3)} gms</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: "1.5rem" }}>
+                  <div style={{ display: "flex", background: "var(--ms-bg)", padding: "0.4rem", borderRadius: "8px", border: "1px solid var(--ms-border)", gap: "0.4rem" }}>
+                    <button
+                      onClick={() => setOutputMode("individual")}
+                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: outputMode === "individual" ? 600 : 400, background: outputMode === "individual" ? "var(--ms-primary)" : "transparent", color: outputMode === "individual" ? "white" : "var(--ms-text-2)", transition: "all 0.2s" }}
+                    >
+                      <FileText size={16} /> Individual PDFs
+                    </button>
+                    <button
+                      onClick={() => setOutputMode("combined")}
+                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: outputMode === "combined" ? 600 : 400, background: outputMode === "combined" ? "var(--ms-primary)" : "transparent", color: outputMode === "combined" ? "white" : "var(--ms-text-2)", transition: "all 0.2s" }}
+                    >
+                      <Files size={16} /> Combined PDF
+                    </button>
+                  </div>
                 </div>
 
                 <div className="ms-review-actions">

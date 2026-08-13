@@ -142,7 +142,7 @@ export async function resolveImages(rows: ParsedRow[]): Promise<void> {
   const allLookup  = [...new Set([...uniqueRaw, ...uniqueNorm])];
 
   // Step 2 – batch DB lookup with both forms
-  let productMap: Record<string, string> = {};
+  let productMap: Record<string, { imageUrl?: string, itemType?: string }> = {};
   try {
     const res = await fetch("/api/images-lookup", {
       method:  "POST",
@@ -162,12 +162,15 @@ export async function resolveImages(rows: ParsedRow[]): Promise<void> {
     console.error("[image-service] images-lookup network error:", err);
   }
 
-  // Step 3 – assign imageUrls to rows
+  // Step 3 – assign imageUrls and itemType to rows
   // Try the raw key first (preserves -c/-d variant match), then fall back to
   // the normalized key (handles hyphen-inserted forms like DZPS-21815).
   for (const row of rows) {
-    const url = productMap[row.rawDesignNumber] ?? productMap[row.designNumber];
-    if (url) row.imageUrl = url;
+    const data = productMap[row.rawDesignNumber] ?? productMap[row.designNumber];
+    if (data) {
+      if (data.imageUrl) row.imageUrl = data.imageUrl;
+      if (data.itemType) row.itemType = data.itemType;
+    }
   }
 
   // Step 4 – count DB-missing (unique raw designs that resolved to nothing)
@@ -180,7 +183,7 @@ export async function resolveImages(rows: ParsedRow[]): Promise<void> {
   }
 
   // Step 5 - fetch unique image URLs with concurrency cap
-  const uniqueUrls   = [...new Set(Object.values(productMap))];
+  const uniqueUrls   = [...new Set(Object.values(productMap).map(p => p.imageUrl).filter(Boolean) as string[])];
   const urlsToFetch  = uniqueUrls.filter(u => !imageCache.has(u));
   const urlsInCache  = uniqueUrls.filter(u =>  imageCache.has(u));
 

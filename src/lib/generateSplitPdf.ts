@@ -213,13 +213,25 @@ export async function generateGroupPdfBlob(
       if (!b64) return;
 
       const { x, y, width, height } = data.cell;
-      const pad  = 2;
-      const size = Math.min(width - pad * 2, height - pad * 2);
-      const imgX = x + (width  - size) / 2;
-      const imgY = y + (height - size) / 2;
-
       try {
-        doc.addImage(b64, "JPEG", imgX, imgY, size, size);
+        const pad = 0.5;
+        const props = doc.getImageProperties(b64);
+        const cellW = width - pad * 2;
+        const cellH = height - pad * 2;
+        
+        const imgRatio = props.width / props.height;
+        let finalW = cellW;
+        let finalH = cellW / imgRatio;
+        
+        if (finalH > cellH) {
+          finalH = cellH;
+          finalW = cellH * imgRatio;
+        }
+        
+        const imgX = x + (width - finalW) / 2;
+        const imgY = y + (height - finalH) / 2;
+        
+        doc.addImage(b64, "JPEG", imgX, imgY, finalW, finalH);
       } catch (e) {
         console.warn("[generateSplitPdf] addImage failed for", item.designNumber, e);
       }

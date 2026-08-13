@@ -1,35 +1,49 @@
 import { ParsedRow } from "./types";
 
 export interface GroupedData {
-  kt: string;
-  color: string;
-  groupName: string; // e.g., "14KT R"
+  kt?: string;
+  color?: string;
+  groupName: string; // e.g., "14KT R" or "Rings"
   items: ParsedRow[];
   totalQty: number;
   totalGrossWt: number;
   totalNetWt: number;
   totalStoneWt: number;
+  selected?: boolean;
 }
 
+export type SplitMode = "melting" | "category";
+
 /**
- * Groups an array of ParsedRows by KT and Color.
+ * Groups an array of ParsedRows based on the chosen split mode.
  */
-export function groupRows(rows: ParsedRow[]): GroupedData[] {
+export function groupRows(rows: ParsedRow[], mode: SplitMode = "melting"): GroupedData[] {
   const groups = new Map<string, GroupedData>();
 
   for (const row of rows) {
-    const groupName = `${row.kt}KT ${row.color}`;
+    let groupName = "";
+    let kt: string | undefined;
+    let color: string | undefined;
+
+    if (mode === "category") {
+      groupName = row.itemType || "Unknown Category";
+    } else {
+      groupName = `${row.kt}KT ${row.color}`;
+      kt = row.kt;
+      color = row.color;
+    }
 
     if (!groups.has(groupName)) {
       groups.set(groupName, {
-        kt: row.kt,
-        color: row.color,
+        kt,
+        color,
         groupName,
         items: [],
         totalQty: 0,
         totalGrossWt: 0,
         totalNetWt: 0,
         totalStoneWt: 0,
+        selected: true, // all groups are selected by default for PDF generation
       });
     }
 

@@ -21,4 +21,5 @@ export interface ParsedRow {
   remarks?: string;
 
   imageUrl?: string; // Resolved from MongoDB via /api/images-lookup
+  itemType?: string; // Resolved from MongoDB for category splitting
 }
