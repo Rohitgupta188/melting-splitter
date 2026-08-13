@@ -306,7 +306,7 @@ body {
 .ms-steps {
   display: flex;
   gap: 0;
-  align-items: center;
+  align-items: flex-start;
   overflow-x: auto;
   padding-bottom: 0.25rem;
   scrollbar-width: none;
@@ -383,7 +383,9 @@ body {
   font-size: 0.68rem;
   font-weight: 500;
   text-align: center;
-  white-space: nowrap;
+  white-space: normal;
+  line-height: 1.25;
+  padding: 0 0.2rem;
   color: var(--ms-text-3);
   transition: color 0.25s;
 }
@@ -615,5 +617,21 @@ body {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* ── Mobile Responsiveness ─────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .ms-step {
+    min-width: 46px; /* Give more breathing room */
+    gap: 0.50rem;
+  }
+  
+  .ms-step-label {
+    display: none; /* Hide labels entirely on mobile for an ultra-clean look */
+  }
+
+  .ms-card {
+    padding: 1.25rem;
   }
 }

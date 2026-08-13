@@ -66,12 +66,14 @@ async function extractQuotationHeader(
     return after || undefined;
   }
 
+  const stop = "(?=\\s*(?:Customer\\s+Name|Contact\\s+Name|Customer\\s+Address|Quotation(?:\\s*No\\.?)?|Date|Remarks)\\s*[:\\-]|$)";
+
   return {
-    customerName:    extract(/Customer\s+Name\s*[:\-]\s*(.+)/i),
-    contactName:     extract(/Contact\s+Name\s*[:\-]\s*(.+)/i),
-    customerAddress: extract(/Customer\s+Address\s*[:\-]\s*(.+)/i),
-    quotationNo:     extract(/Quotation(?:\s*No\.?)?\s*[:\-]\s*(.+)/i),
-    date:            extract(/\bDate\s*[:\-]\s*(.+)/i),
+    customerName:    extract(new RegExp(`Customer\\s+Name\\s*[:\\-]\\s*(.*?)${stop}`, "i")),
+    contactName:     extract(new RegExp(`Contact\\s+Name\\s*[:\\-]\\s*(.*?)${stop}`, "i")),
+    customerAddress: extract(new RegExp(`Customer\\s+Address\\s*[:\\-]\\s*(.*?)${stop}`, "i")),
+    quotationNo:     extract(new RegExp(`Quotation(?:\\s*No\\.?)?\\s*[:\\-]\\s*(.*?)${stop}`, "i"))?.replace(/quotation/i, "").trim(),
+    date:            extract(new RegExp(`\\bDate\\s*[:\\-]\\s*(.*?)${stop}`, "i")),
     remarks:         extractRemarks(),
   };
 }

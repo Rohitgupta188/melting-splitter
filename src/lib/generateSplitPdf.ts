@@ -9,6 +9,42 @@ function detectImageFormat(b64: string): "JPEG" | "PNG" | "WEBP" {
   return "JPEG";
 }
 
+async function compressImage(base64Str: string, maxWidth: number): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width;
+      let h = img.height;
+      
+      if (w > maxWidth || h > maxWidth) {
+        if (w > h) {
+          h = Math.round((h * maxWidth) / w);
+          w = maxWidth;
+        } else {
+          w = Math.round((w * maxWidth) / h);
+          h = maxWidth;
+        }
+      }
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(base64Str);
+      
+      // Fill with white background in case of transparent PNGs
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      
+      // Compress to JPEG to aggressively save space
+      resolve(canvas.toDataURL('image/jpeg', 0.6));
+    };
+    img.onerror = () => resolve(base64Str);
+    img.src = base64Str;
+  });
+}
+
 export async function generateGroupPdfBlob(
   group:  GroupedData,
   header: QuotationHeader
@@ -26,11 +62,11 @@ export async function generateGroupPdfBlob(
   // original PDF, so every split PDF is self-contained and traceable.
   const infoRows: [string, string][] = [];
 
-  if (header.customerName)    infoRows.push(["Customer Name",    header.customerName]);
-  if (header.contactName)     infoRows.push(["Contact Name",     header.contactName]);
-  if (header.customerAddress) infoRows.push(["Customer Address", header.customerAddress]);
-  if (header.quotationNo)     infoRows.push(["Quotation",        header.quotationNo]);
-  if (header.date)            infoRows.push(["Date",             header.date]);
+  infoRows.push(["Customer Name",    header.customerName || ""]);
+  infoRows.push(["Contact Name",     header.contactName || ""]);
+  infoRows.push(["Customer Address", header.customerAddress || ""]);
+  infoRows.push(["Quotation",        header.quotationNo || ""]);
+  infoRows.push(["Date",             header.date || ""]);
 
   if (infoRows.length > 0) {
     autoTable(doc, {
@@ -81,6 +117,8 @@ export async function generateGroupPdfBlob(
     curY += 3; // no header — give a little top padding
   }
 
+  curY += 10; // Extra top margin before the Split Quotation title
+
   // ── Split title ───────────────────────────────────────────────────────────
   doc.setFont("times", "bold");
   doc.setFontSize(14);
@@ -104,6 +142,19 @@ export async function generateGroupPdfBlob(
   // ── Product table ─────────────────────────────────────────────────────────
   const IMAGE_COL = 1;
   const ROW_H     = 35;
+
+  // Pre-compress images
+  const compressedImages: Record<string, string> = {};
+  await Promise.all(
+    group.items.map(async (item) => {
+      if (item.imageUrl && !compressedImages[item.imageUrl]) {
+        const b64 = getCachedImage(item.imageUrl);
+        if (b64) {
+          compressedImages[item.imageUrl] = await compressImage(b64, 1200);
+        }
+      }
+    })
+  );
 
   const bodyRows = group.items.map((item, idx) => [
     idx + 1,
@@ -158,7 +209,7 @@ export async function generateGroupPdfBlob(
       const item = group.items[data.row.index];
       if (!item) return;
 
-      const b64 = getCachedImage(item.imageUrl);
+      const b64 = item.imageUrl ? compressedImages[item.imageUrl] : null;
       if (!b64) return;
 
       const { x, y, width, height } = data.cell;
@@ -168,7 +219,7 @@ export async function generateGroupPdfBlob(
       const imgY = y + (height - size) / 2;
 
       try {
-        doc.addImage(b64, detectImageFormat(b64), imgX, imgY, size, size);
+        doc.addImage(b64, "JPEG", imgX, imgY, size, size);
       } catch (e) {
         console.warn("[generateSplitPdf] addImage failed for", item.designNumber, e);
       }

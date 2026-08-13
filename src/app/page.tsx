@@ -69,6 +69,10 @@ const ACTIVE_STAGES = new Set<Stage>([
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
 
 function stageIndex(stage: Stage): number {
+  if (stage === "REVIEW_GROUPS") {
+    // Pause the timeline on "FETCHING_IMAGES" so previous steps remain highlighted as "done"
+    return PIPELINE_STEPS.findIndex(s => s.stage === "FETCHING_IMAGES");
+  }
   return PIPELINE_STEPS.findIndex(s => s.stage === stage);
 }
 
@@ -162,11 +166,18 @@ export default function Home() {
       const finalGroups = groupRows(rawRows); // re-group with imageUrls assigned
 
       const zip = new JSZip();
+      
+      const cleanName = (str: string) => str.replace(/[\\/:*?"<>|]/g, "").trim();
+      const custName = cleanName(quotationHeader.customerName || "Customer");
+      const qNo = cleanName(quotationHeader.quotationNo || "Quotation");
+      const suffix = `${custName} ${qNo}`.trim();
+
       for (let i = 0; i < finalGroups.length; i++) {
         const g = finalGroups[i];
         setStageDetail(`Generating PDF ${i + 1} of ${finalGroups.length}: ${g.groupName}`);
         const pdfBlob = await generateGroupPdfBlob(g, quotationHeader);
-        zip.file(`Quotation_${g.groupName.replace(/\s+/g, "_")}.pdf`, pdfBlob);
+        const groupNameClean = cleanName(g.groupName);
+        zip.file(`${groupNameClean} - ${suffix}.pdf`, pdfBlob);
       }
 
       // ZIP
@@ -191,7 +202,7 @@ export default function Home() {
       setErrorMsg(err?.message ?? "Processing failed. Please try again.");
       setStage("ERROR");
     }
-  }, [rawRows]);
+  }, [rawRows, quotationHeader]);
 
   // ── Event handlers ─────────────────────────────────────────────────────────
 
@@ -218,7 +229,12 @@ export default function Home() {
   );
 
   const handleDownload = () => {
-    if (zipBlob) saveAs(zipBlob, "Split_Quotations.zip");
+    if (zipBlob) {
+      const cleanName = (str: string) => str.replace(/[\\/:*?"<>|]/g, "").trim();
+      const custName = cleanName(quotationHeader.customerName || "Customer");
+      const qNo = cleanName(quotationHeader.quotationNo || "Quotation");
+      saveAs(zipBlob, `${custName} ${qNo}.zip`);
+    }
   };
 
   const handleReset = () => {
@@ -244,8 +260,7 @@ export default function Home() {
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
-  const showDropzone =
-    stage === "IDLE" || stage === "ERROR" || stage === "COMPLETED";
+  const showDropzone = stage === "IDLE" || stage === "ERROR";
 
   const currentStepIdx = stageIndex(stage);
 
@@ -378,14 +393,6 @@ export default function Home() {
             {/* ── COMPLETED ── */}
             {stage === "COMPLETED" && processLog && (
               <div className="ms-complete">
-                <div className="ms-complete-hero">
-                  <CheckCircle className="ms-complete-icon" />
-                  <h2 className="ms-complete-title">Done!</h2>
-                  <p className="ms-complete-time">
-                    Completed in {processLog.elapsedSeconds.toFixed(1)} s
-                  </p>
-                </div>
-
                 {/* Processing log */}
                 <div className="ms-log" role="region" aria-label="Processing summary">
                   <div className="ms-log-row">
@@ -403,22 +410,7 @@ export default function Home() {
                   ))}
                   <div className="ms-log-divider" />
 
-                  <p className="ms-log-section">Images</p>
-                  <div className="ms-log-row">
-                    <span className="ms-log-label ms-log-label--indent">Fetched</span>
-                    <span className="ms-log-value ms-log-value--green">{processLog.imageStats.fetched}</span>
-                  </div>
-                  <div className="ms-log-row">
-                    <span className="ms-log-label ms-log-label--indent">Cached (deduped)</span>
-                    <span className="ms-log-value ms-log-value--blue">{processLog.imageStats.cached}</span>
-                  </div>
-                  <div className="ms-log-row">
-                    <span className="ms-log-label ms-log-label--indent">Missing</span>
-                    <span className={`ms-log-value ${processLog.imageStats.missing > 0 ? "ms-log-value--amber" : ""}`}>
-                      {processLog.imageStats.missing}
-                    </span>
-                  </div>
-                  <div className="ms-log-divider" />
+
 
                   <div className="ms-log-row">
                     <span className="ms-log-label">PDFs generated</span>
@@ -441,6 +433,14 @@ export default function Home() {
                   >
                     Start Over
                   </button>
+                </div>
+
+                <div className="ms-complete-hero">
+                  <CheckCircle className="ms-complete-icon" />
+                  <h2 className="ms-complete-title">Done!</h2>
+                  <p className="ms-complete-time">
+                    Completed in {processLog.elapsedSeconds.toFixed(1)} s
+                  </p>
                 </div>
               </div>
             )}

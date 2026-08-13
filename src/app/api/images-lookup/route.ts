@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import { Product } from '@/models/Product.model';
+import { normalizeDesignNumber } from '@/lib/design-number';
 
 // ---------------------------------------------------------------------------
 // Strip trailing single-letter variant suffixes from a design number.
@@ -18,38 +19,38 @@ function stripVariantSuffix(raw: string): string {
 
 export async function POST(req: Request) {
   try {
-    const { designNumbers } = await req.json();
+    const { designNumbers: rawNumbers } = await req.json();
 
-    if (!Array.isArray(designNumbers) || designNumbers.length === 0) {
+    if (!Array.isArray(rawNumbers) || rawNumbers.length === 0) {
       return NextResponse.json({ productMap: {} });
     }
+
+    // Safety net: ensure the backend checks the normalized version (with hyphens added) 
+    // even if the frontend only sent the raw string.
+    const designNumbers = [...new Set([
+      ...rawNumbers,
+      ...rawNumbers.map((d: string) => normalizeDesignNumber(d)).filter(Boolean)
+    ])];
 
     await connectDB();
 
     const productMap: Record<string, string> = {};
 
-    // ── Layer 1: exact match on designNumber / sku ──────────────────────────
+    // ── Layer 1: exact match on designNumber ──────────────────────────
     // Uses the raw PDF string (e.g. "TRPD073-c") which is exactly what MongoDB
-    // stores in the designNumber and sku fields.
+    // stores in the designNumber field.
     const layer1 = await Product.find({
-      $or: [
-        { designNumber: { $in: designNumbers } },
-        { sku: { $in: designNumbers } },
-      ],
-    }).select('designNumber sku imageUrl').lean() as any[];
+      designNumber: { $in: designNumbers }
+    }).select('designNumber imageUrl').lean() as any[];
 
     const foundByLayer1 = new Set<string>();
 
     for (const p of layer1) {
       if (!p.imageUrl) continue;
-      // Key by whichever field matched the incoming raw design number.
+
       if (p.designNumber && designNumbers.includes(p.designNumber)) {
         productMap[p.designNumber] = p.imageUrl;
         foundByLayer1.add(p.designNumber);
-      }
-      if (p.sku && designNumbers.includes(p.sku)) {
-        productMap[p.sku] = p.imageUrl;
-        foundByLayer1.add(p.sku);
       }
     }
 
@@ -58,7 +59,10 @@ export async function POST(req: Request) {
     // design number, then search the imageName field (stored as "TRPD073.jpg").
     // This handles the case where the PDF contains "TRPD073-c" but the DB
     // only has imageName "TRPD073.jpg" with no matching designNumber field.
-    const notFound = designNumbers.filter((d: string) => !foundByLayer1.has(d));
+    const notFound = designNumbers.filter((d: string) => {
+      // Don't send to Layer 2 if this exact string was found, OR if its normalized version was found!
+      return !foundByLayer1.has(d) && !foundByLayer1.has(normalizeDesignNumber(d));
+    });
 
     if (notFound.length > 0) {
       // Build a reverse map:  baseDesignNumber → [rawDesignNumbers that strip to it]
@@ -67,13 +71,15 @@ export async function POST(req: Request) {
       const imageNamesToSearch: string[] = [];
 
       for (const raw of notFound) {
-        const base = stripVariantSuffix(raw);
-        // Search for both .jpg and .jpeg in case the catalogue uses either
-        const imageName = `${base}.jpg`;
+        let base = stripVariantSuffix(raw);
+        base = normalizeDesignNumber(base) || base; // Ensure hyphen is added if missing
+        
+        // Add multiple extensions for catalogue matching
+        const names = [`${base}.jpg`, `${base}.JPG`, `${base}.jpeg`, `${base}.JPEG`];
 
         if (!baseToRaws.has(base)) {
           baseToRaws.set(base, []);
-          imageNamesToSearch.push(imageName);
+          imageNamesToSearch.push(...names);
         }
         baseToRaws.get(base)!.push(raw);
       }

@@ -32,20 +32,20 @@ export function detectHeaders(items: any[]): HeaderColumns {
     const x = item.transform[4];
     const y = Number(item.transform[5].toFixed(1));
 
-    if (text === "Design No.") {
+    if (/^Design\s*No\.?$/i.test(text) || /^Design$/i.test(text)) {
       cols.designNoX = x;
       if (cols.headerY === null) cols.headerY = y;
-    } else if (text === "KT") {
+    } else if (/^KT$/i.test(text) || /^Karat$/i.test(text)) {
       cols.ktX = x;
-    } else if (text === "Color") {
+    } else if (/^Colou?r$/i.test(text)) {
       cols.colorX = x;
-    } else if (text === "Gross Wt.") {
+    } else if (/^Gross(\s*Wt\.?)?$/i.test(text)) {
       cols.grossWtX = x;
-    } else if (text === "Net Wt.") {
+    } else if (/^Net(\s*Wt\.?|\s*W)?$/i.test(text)) {
       cols.netWtX = x;
-    } else if (text === "S Wt.") {
+    } else if (/^S\s*Wt\.?$/i.test(text) || /^S\s*W$/i.test(text) || /^Stone(\s*Wt\.?|\s*W)?$/i.test(text)) {
       cols.sWtX = x;
-    } else if (text === "Qty") {
+    } else if (/^Qt(y)?$/i.test(text) || /^Quantity$/i.test(text)) {
       cols.qtyX = x;
     }
   }
