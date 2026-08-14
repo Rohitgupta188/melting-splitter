@@ -101,13 +101,7 @@ export default function Home() {
 
   const isProcessing = ACTIVE_STAGES.has(stage) || stage === "REVIEW_GROUPS";
 
-  // Re-group if the user changes split mode during review
-  useEffect(() => {
-    if (stage === "REVIEW_GROUPS" && rawRows.length > 0) {
-      setGroups(groupRows(rawRows, splitMode));
-    }
-  }, [splitMode, stage, rawRows]);
-
+  // Removed problematic useEffect for splitMode
   // ── Validation ─────────────────────────────────────────────────────────────
 
   function validateFile(file: File): string | null {
@@ -235,7 +229,7 @@ export default function Home() {
       setErrorMsg(err?.message ?? "Processing failed. Please try again.");
       setStage("ERROR");
     }
-  }, [rawRows, quotationHeader, splitMode, groups, outputMode]);
+  }, [rawRows, quotationHeader, groups, outputMode]);
 
   // ── Event handlers ─────────────────────────────────────────────────────────
 
@@ -395,13 +389,23 @@ export default function Home() {
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: "1.5rem" }}>
                   <div style={{ display: "flex", background: "var(--ms-bg)", padding: "0.4rem", borderRadius: "8px", border: "1px solid var(--ms-border)", gap: "0.4rem" }}>
                     <button
-                      onClick={() => setSplitMode("category")}
+                      onClick={() => {
+                        setSplitMode("category");
+                        if (stage === "REVIEW_GROUPS" && rawRows.length > 0) {
+                          setGroups(groupRows(rawRows, "category"));
+                        }
+                      }}
                       style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: splitMode === "category" ? 600 : 400, background: splitMode === "category" ? "var(--ms-primary)" : "transparent", color: splitMode === "category" ? "#0b0f1a" : "var(--ms-text-2)", transition: "all 0.2s" }}
                     >
                       <FolderTree size={16} /> Category
                     </button>
                     <button
-                      onClick={() => setSplitMode("melting")}
+                      onClick={() => {
+                        setSplitMode("melting");
+                        if (stage === "REVIEW_GROUPS" && rawRows.length > 0) {
+                          setGroups(groupRows(rawRows, "melting"));
+                        }
+                      }}
                       style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: splitMode === "melting" ? 600 : 400, background: splitMode === "melting" ? "var(--ms-primary)" : "transparent", color: splitMode === "melting" ? "#0b0f1a" : "var(--ms-text-2)", transition: "all 0.2s" }}
                     >
                       <Flame size={16} /> Melting
