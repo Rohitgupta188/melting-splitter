@@ -29,7 +29,8 @@
   --ms-radius: 16px;
   --ms-radius-lg: 22px;
 
-  --ms-font: "Inter", system-ui, sans-serif;
+  --ms-font: var(--font-sans), system-ui, sans-serif;
+  --ms-primary: var(--ms-gold);
 }
 
 /* ── Base ──────────────────────────────────────────────────────────── */

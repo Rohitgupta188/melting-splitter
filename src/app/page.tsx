@@ -396,13 +396,13 @@ export default function Home() {
                   <div style={{ display: "flex", background: "var(--ms-bg)", padding: "0.4rem", borderRadius: "8px", border: "1px solid var(--ms-border)", gap: "0.4rem" }}>
                     <button
                       onClick={() => setSplitMode("category")}
-                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: splitMode === "category" ? 600 : 400, background: splitMode === "category" ? "var(--ms-primary)" : "transparent", color: splitMode === "category" ? "white" : "var(--ms-text-2)", transition: "all 0.2s" }}
+                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: splitMode === "category" ? 600 : 400, background: splitMode === "category" ? "var(--ms-primary)" : "transparent", color: splitMode === "category" ? "#0b0f1a" : "var(--ms-text-2)", transition: "all 0.2s" }}
                     >
                       <FolderTree size={16} /> Category
                     </button>
                     <button
                       onClick={() => setSplitMode("melting")}
-                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: splitMode === "melting" ? 600 : 400, background: splitMode === "melting" ? "var(--ms-primary)" : "transparent", color: splitMode === "melting" ? "white" : "var(--ms-text-2)", transition: "all 0.2s" }}
+                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: splitMode === "melting" ? 600 : 400, background: splitMode === "melting" ? "var(--ms-primary)" : "transparent", color: splitMode === "melting" ? "#0b0f1a" : "var(--ms-text-2)", transition: "all 0.2s" }}
                     >
                       <Flame size={16} /> Melting
                     </button>
@@ -480,13 +480,13 @@ export default function Home() {
                   <div style={{ display: "flex", background: "var(--ms-bg)", padding: "0.4rem", borderRadius: "8px", border: "1px solid var(--ms-border)", gap: "0.4rem" }}>
                     <button
                       onClick={() => setOutputMode("individual")}
-                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: outputMode === "individual" ? 600 : 400, background: outputMode === "individual" ? "var(--ms-primary)" : "transparent", color: outputMode === "individual" ? "white" : "var(--ms-text-2)", transition: "all 0.2s" }}
+                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: outputMode === "individual" ? 600 : 400, background: outputMode === "individual" ? "var(--ms-primary)" : "transparent", color: outputMode === "individual" ? "#0b0f1a" : "var(--ms-text-2)", transition: "all 0.2s" }}
                     >
                       <FileText size={16} /> Individual PDFs
                     </button>
                     <button
                       onClick={() => setOutputMode("combined")}
-                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: outputMode === "combined" ? 600 : 400, background: outputMode === "combined" ? "var(--ms-primary)" : "transparent", color: outputMode === "combined" ? "white" : "var(--ms-text-2)", transition: "all 0.2s" }}
+                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: outputMode === "combined" ? 600 : 400, background: outputMode === "combined" ? "var(--ms-primary)" : "transparent", color: outputMode === "combined" ? "#0b0f1a" : "var(--ms-text-2)", transition: "all 0.2s" }}
                     >
                       <Files size={16} /> Combined PDF
                     </button>
