@@ -31,7 +31,29 @@ import {
   ImageStats,
 } from "@/lib/image-service";
 import { generateGroupPdfBlob } from "@/lib/generateSplitPdf";
+import { buildProductionPDF, PdfQuotationLineItem } from "@/lib/production";
 import { ParsedRow, QuotationHeader } from "@/lib/types";
+
+import logoImg from "./icon.png";
+
+// Helper to load local logo as base64
+async function getLogoBase64(): Promise<string | null> {
+  try {
+    const res = await fetch(logoImg.src);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    console.error("Failed to load logo", e);
+    return null;
+  }
+}
+
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -91,6 +113,7 @@ export default function Home() {
   const [stageDetail,   setStageDetail]   = useState<string>("");
   const [splitMode,     setSplitMode]     = useState<SplitMode>("category");
   const [outputMode,    setOutputMode]    = useState<"individual" | "combined">("individual");
+  const [layoutMode,    setLayoutMode]    = useState<"standard" | "production">("standard");
 
   // Intermediate state
   const [rawRows,        setRawRows]        = useState<ParsedRow[]>([]);
@@ -176,6 +199,9 @@ export default function Home() {
 
       let processGroups = finalGroups;
       
+      const logoBase64 = layoutMode === "production" ? await getLogoBase64() : null;
+
+      
       if (outputMode === "combined" && finalGroups.length > 0) {
         const combinedName = finalGroups.map(g => g.groupName).join(", ");
         const shortName = combinedName.length > 40 ? "Combined Items" : combinedName;
@@ -202,7 +228,37 @@ export default function Home() {
       for (let i = 0; i < processGroups.length; i++) {
         const g = processGroups[i];
         setStageDetail(`Generating PDF ${i + 1} of ${processGroups.length}: ${g.groupName}`);
-        const pdfBlob = await generateGroupPdfBlob(g, quotationHeader);
+        
+        let pdfBlob: Blob;
+        if (layoutMode === "production") {
+          const lineItems: PdfQuotationLineItem[] = g.items.map(item => ({
+            sku: item.designNumber, // Use design number as SKU
+            designNumber: item.designNumber,
+            itemType: item.itemType,
+            grossWeight: item.grossWeight,
+            netWeight: item.netWeight,
+            stoneWeight: item.stoneWeight,
+            metalPurity: item.kt,
+            metalType: item.color,
+            imageUrl: item.imageUrl,
+            qty: item.qty,
+            remarks: item.remarks
+          }));
+
+          pdfBlob = await buildProductionPDF({
+            quotationNo: quotationHeader.quotationNo || "Quotation",
+            companyName: quotationHeader.customerName || "Customer",
+            contactName: quotationHeader.contactName || "",
+            address: quotationHeader.customerAddress || "",
+            remarks: quotationHeader.remarks || "",
+            date: quotationHeader.date || new Date().toLocaleDateString(),
+            lineItems,
+            logoBase64,
+          });
+        } else {
+          pdfBlob = await generateGroupPdfBlob(g, quotationHeader);
+        }
+
         const groupNameClean = cleanName(g.groupName);
         zip.file(`${groupNameClean} - ${suffix}.pdf`, pdfBlob);
       }
@@ -229,7 +285,7 @@ export default function Home() {
       setErrorMsg(err?.message ?? "Processing failed. Please try again.");
       setStage("ERROR");
     }
-  }, [rawRows, quotationHeader, groups, outputMode]);
+  }, [rawRows, quotationHeader, groups, outputMode, layoutMode]);
 
   // ── Event handlers ─────────────────────────────────────────────────────────
 
@@ -480,7 +536,7 @@ export default function Home() {
                   </table>
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "center", marginBottom: "1.5rem" }}>
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: "1.5rem", gap: "1rem", flexWrap: "wrap" }}>
                   <div style={{ display: "flex", background: "var(--ms-bg)", padding: "0.4rem", borderRadius: "8px", border: "1px solid var(--ms-border)", gap: "0.4rem" }}>
                     <button
                       onClick={() => setOutputMode("individual")}
@@ -493,6 +549,21 @@ export default function Home() {
                       style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: outputMode === "combined" ? 600 : 400, background: outputMode === "combined" ? "var(--ms-primary)" : "transparent", color: outputMode === "combined" ? "#0b0f1a" : "var(--ms-text-2)", transition: "all 0.2s" }}
                     >
                       <Files size={16} /> Combined PDF
+                    </button>
+                  </div>
+
+                  <div style={{ display: "flex", background: "var(--ms-bg)", padding: "0.4rem", borderRadius: "8px", border: "1px solid var(--ms-border)", gap: "0.4rem" }}>
+                    <button
+                      onClick={() => setLayoutMode("standard")}
+                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: layoutMode === "standard" ? 600 : 400, background: layoutMode === "standard" ? "var(--ms-primary)" : "transparent", color: layoutMode === "standard" ? "#0b0f1a" : "var(--ms-text-2)", transition: "all 0.2s" }}
+                    >
+                      <Layers size={16} /> Standard Layout
+                    </button>
+                    <button
+                      onClick={() => setLayoutMode("production")}
+                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: layoutMode === "production" ? 600 : 400, background: layoutMode === "production" ? "var(--ms-primary)" : "transparent", color: layoutMode === "production" ? "#0b0f1a" : "var(--ms-text-2)", transition: "all 0.2s" }}
+                    >
+                      <Zap size={16} /> Production Layout
                     </button>
                   </div>
                 </div>
