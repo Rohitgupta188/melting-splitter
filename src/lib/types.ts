@@ -20,6 +20,14 @@ export interface ParsedRow {
   qty: number;
   remarks?: string;
 
-  imageUrl?: string; // Resolved from MongoDB via /api/images-lookup
+  // Geometry for image extraction
+  pageNo: number;
+  imageCellX: number;
+  imageCellWidth: number;
+  imageCellTop: number;
+  imageCellBottom: number;
+
+  imageUrl?: string; // Resolved from Image Service (Catalogue, Native, or Crop)
+  imageSource?: "catalogue" | "pdf-native" | "pdf-crop" | "missing";
   itemType?: string; // Resolved from MongoDB for category splitting
 }

@@ -1,4 +1,5 @@
 export interface HeaderColumns {
+  imageX: number | null;    // X-coord of the "Image" column header (may not exist)
   designNoX: number | null;
   ktX: number | null;
   colorX: number | null;
@@ -15,6 +16,7 @@ export interface HeaderColumns {
  */
 export function detectHeaders(items: any[]): HeaderColumns {
   const cols: HeaderColumns = {
+    imageX: null,
     designNoX: null,
     ktX: null,
     colorX: null,
@@ -32,7 +34,10 @@ export function detectHeaders(items: any[]): HeaderColumns {
     const x = item.transform[4];
     const y = Number(item.transform[5].toFixed(1));
 
-    if (/^Design\s*No\.?$/i.test(text) || /^Design$/i.test(text)) {
+    if (/^Image$/i.test(text) || /^Img$/i.test(text)) {
+      cols.imageX = x;
+      if (cols.headerY === null) cols.headerY = y;
+    } else if (/^Design\s*No\.?$/i.test(text) || /^Design$/i.test(text)) {
       cols.designNoX = x;
       if (cols.headerY === null) cols.headerY = y;
     } else if (/^KT$/i.test(text) || /^Karat$/i.test(text)) {

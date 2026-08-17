@@ -1,6 +1,7 @@
 import { detectHeaders, HeaderColumns } from "./header-detector";
 import { normalizeDesignNumber } from "./design-number";
 import { ParsedRow, QuotationHeader } from "./types";
+import type { PDFDocumentProxy, PDFDocumentLoadingTask } from "pdfjs-dist";
 
 // ---------------------------------------------------------------------------
 // Extract quotation metadata (Customer Name, Date, etc.) from the text that
@@ -62,7 +63,15 @@ async function extractQuotationHeader(
   function extractRemarks(): string | undefined {
     const idx = fullText.search(/Remarks\s*[:\-]/i);
     if (idx === -1) return undefined;
-    const after = fullText.slice(idx).replace(/^Remarks\s*[:\-]\s*/i, "").trim();
+    let after = fullText.slice(idx).replace(/^Remarks\s*[:\-]\s*/i, "").trim();
+    
+    // The PDF sometimes contains a summary table between the header and the main product table.
+    // This table's header usually starts with "Sr. Item Type". We cut off the remarks there.
+    const cutoffMatch = after.search(/\bSr\.\s*Item\s*Type\b/i);
+    if (cutoffMatch !== -1) {
+      after = after.substring(0, cutoffMatch).trim();
+    }
+
     return after || undefined;
   }
 
@@ -87,6 +96,10 @@ const ROW_TOLERANCE = 4;
 export interface ParseResult {
   header: QuotationHeader;
   rows: ParsedRow[];
+  /** The live PDF document — used by extractNativeImages/extractFallbackImages to call getPage(). */
+  pdfDoc: PDFDocumentProxy;
+  /** The loading task — the ONLY object that has destroy(). Call this in a finally block. */
+  loadingTask: PDFDocumentLoadingTask;
 }
 
 export async function parsePDF(file: File): Promise<ParseResult> {
@@ -105,9 +118,13 @@ export async function parsePDF(file: File): Promise<ParseResult> {
     throw new Error("Invalid or corrupted PDF.");
   }
 
-  let pdf: Awaited<ReturnType<typeof pdfjsLib.getDocument>["promise"]>;
+  // getDocument() returns a PDFDocumentLoadingTask. We keep a reference to it
+  // so the caller can call loadingTask.destroy() to release the worker + memory.
+  let loadingTask: PDFDocumentLoadingTask;
+  let pdf: PDFDocumentProxy;
   try {
-    pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+    pdf = await loadingTask.promise;
   } catch {
     throw new Error("Invalid or corrupted PDF.");
   }
@@ -210,7 +227,7 @@ export async function parsePDF(file: File): Promise<ParseResult> {
     // Sort rows top-to-bottom (higher Y = higher on page in PDF coords)
     const sortedRows = [...rowMap.entries()].sort((a, b) => b[0] - a[0]);
 
-    for (const [, row] of sortedRows) {
+    for (const [rowKey, row] of sortedRows) {
       if (!row.designNo) continue;
 
       // rawDesignNumber = exact string from the PDF (e.g. "TRPD073-c")
@@ -226,6 +243,29 @@ export async function parsePDF(file: File): Promise<ParseResult> {
       const netWt    = parseFloat(row.netWt   || "0");
       const sWt      = parseFloat(row.sWt     || "0");
 
+      // Row bounding box
+      // We use the text Y as the center of the row and estimate row height from
+      // the gap between adjacent rows, using the full inter-row gap (not midpoints).
+      // In PDF coordinate space Y increases upward, so higher Y means closer to top.
+      const rowIdx = sortedRows.findIndex(r => r[0] === rowKey);
+      const prevY = rowIdx > 0 ? sortedRows[rowIdx - 1][0] : rowKey;
+      const nextY = rowIdx < sortedRows.length - 1 ? sortedRows[rowIdx + 1][0] : rowKey;
+      const rowHeight = rowIdx > 0
+        ? (prevY - rowKey) / 2           // half the gap to the row above
+        : (rowKey - nextY) / 2;           // fall back to half the gap below
+      const halfH = Math.max(rowHeight, 14); // at least 14 pdf units
+
+      // imageCellX and imageCellWidth - the image cell is left of the Design No column.
+      // If the PDF has an explicit "Image" column, imageX will be set there.
+      // Otherwise we use x=0 up to the design number column.
+      const imgX = cols.imageX ?? 0;
+      const imgW = (cols.designNoX ?? 100) - imgX;
+
+      const imageCellX     = imgX;
+      const imageCellWidth = Math.max(imgW, 50);
+      const imageCellTop    = rowKey + halfH;    // PDF Y is up — this is the TOP (higher value)
+      const imageCellBottom = rowKey - halfH;    // this is the BOTTOM (lower value)
+
       rows.push({
         sr:             globalSr++,
         designNumber:    designNo,
@@ -236,10 +276,15 @@ export async function parsePDF(file: File): Promise<ParseResult> {
         netWeight:      Number.isNaN(netWt)   ? 0 : netWt,
         stoneWeight:    Number.isNaN(sWt)     ? 0 : sWt,
         qty:            Number.isNaN(qty)      ? 1 : qty,
+        pageNo:         pageNo,
+        imageCellX,
+        imageCellWidth,
+        imageCellTop,
+        imageCellBottom,
       });
     }
   }
 
-  return { header, rows };
+  return { header, rows, pdfDoc: pdf, loadingTask };
 }
 

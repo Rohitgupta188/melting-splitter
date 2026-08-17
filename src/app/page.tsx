@@ -159,7 +159,7 @@ export default function Home() {
       await new Promise(r => setTimeout(r, 50)); // allow re-render
 
       setStage("PARSING_ROWS");
-      const { header, rows } = await parsePDF(file);
+      const { header, rows, pdfDoc, loadingTask } = await parsePDF(file);
 
       if (rows.length === 0) {
         throw new Error("No valid product rows found in the PDF.");
@@ -167,7 +167,13 @@ export default function Home() {
 
       setStage("FETCHING_IMAGES");
       setStageDetail(`Looking up ${[...new Set(rows.map(r => r.rawDesignNumber))].length} unique products from database…`);
-      await resolveImages(rows);
+      try {
+        await resolveImages(rows, pdfDoc);
+      } finally {
+        // destroy() lives on the PDFDocumentLoadingTask, not the PDFDocumentProxy.
+        // This terminates the PDF.js worker and frees all associated memory.
+        await loadingTask.destroy();
+      }
 
       const grouped = groupRows(rows, splitMode);
       setRawRows(rows);
@@ -175,7 +181,7 @@ export default function Home() {
       setQuotationHeader(header);
       
       const imgStats = getImageStats();
-      setStageDetail(`Fetched ${imgStats.fetched} images. Found ${rows.length} items across ${grouped.length} categories.`);
+      setStageDetail(`Resolved ${rows.length} images. Found ${rows.length} items across ${grouped.length} categories.`);
       setStage("REVIEW_GROUPS");
     } catch (err: any) {
       console.error("[page] parse error:", err);
@@ -271,7 +277,6 @@ export default function Home() {
       const elapsed = (performance.now() - startTime) / 1000;
 
       setZipBlob(content);
-      setGroups(finalGroups);
       setProcessLog({
         totalRows:      rawRows.length,
         groups:         finalGroups,
@@ -606,7 +611,25 @@ export default function Home() {
                     </div>
                   ))}
                   <div className="ms-log-divider" />
-
+                  
+                  <p className="ms-log-section">Images</p>
+                  <div className="ms-log-row">
+                    <span className="ms-log-label ms-log-label--indent">Catalogue</span>
+                    <span className="ms-log-value">{processLog.imageStats.catalogue}</span>
+                  </div>
+                  <div className="ms-log-row">
+                    <span className="ms-log-label ms-log-label--indent">PDF Native</span>
+                    <span className="ms-log-value">{processLog.imageStats.native}</span>
+                  </div>
+                  <div className="ms-log-row">
+                    <span className="ms-log-label ms-log-label--indent">PDF Crop</span>
+                    <span className="ms-log-value">{processLog.imageStats.crop}</span>
+                  </div>
+                  <div className="ms-log-row">
+                    <span className="ms-log-label ms-log-label--indent">Missing</span>
+                    <span className="ms-log-value">{processLog.imageStats.missing}</span>
+                  </div>
+                  <div className="ms-log-divider" />
 
 
                   <div className="ms-log-row">
@@ -624,11 +647,22 @@ export default function Home() {
                     <FileDown size={18} /> Download ZIP
                   </button>
                   <button
+                    id="btn-back-options"
+                    className="ms-btn ms-btn--primary"
+                    onClick={() => {
+                      setStage("REVIEW_GROUPS");
+                      setZipBlob(null);
+                      setProcessLog(null);
+                    }}
+                  >
+                    Generate Another PDF
+                  </button>
+                  <button
                     id="btn-start-over"
                     className="ms-btn ms-btn--ghost"
                     onClick={handleReset}
                   >
-                    Start Over
+                    Upload New PDF
                   </button>
                 </div>
 

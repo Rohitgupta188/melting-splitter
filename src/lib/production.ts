@@ -25,39 +25,77 @@ function detectImageFormat(dataUrl: string): string {
   return "JPEG"; // safe default
 }
 
-/**
- * Compress an image aggressively to a JPEG to save space.
- */
-async function compressImage(base64Str: string, maxWidth: number): Promise<string> {
+// ---------------------------------------------------------------------------
+// normalizeToSquare
+//
+// Converts ANY image (portrait, landscape, square) into a perfectly consistent
+// square JPEG thumbnail:
+//   • Fixed pixel dimensions (THUMB_SIZE × THUMB_SIZE)
+//   • White background — eliminates dark/black surrounds from native PDF images
+//   • Inner padding so the subject never touches the edge
+//   • object-fit: contain — scaled to fit, never cropped, never stretched
+//
+// This is the only place where images are processed for PDF output.
+// Every image in production.ts is this exact square — no exceptions.
+// ---------------------------------------------------------------------------
+const THUMB_SIZE = 400; // px — canvas resolution (higher = sharper print)
+const THUMB_PAD  = 20;  // px — whitespace on each side
+
+async function normalizeToSquare(base64Str: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+
+    img.onload = () => {
+      const canvas  = document.createElement("canvas");
+      canvas.width  = THUMB_SIZE;
+      canvas.height = THUMB_SIZE;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { resolve(base64Str); return; }
+
+      // White background — covers dark/transparent source images
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, THUMB_SIZE, THUMB_SIZE);
+
+      // Drawable area (canvas minus padding on all sides)
+      const drawArea = THUMB_SIZE - THUMB_PAD * 2;
+
+      // Scale image to fit inside drawArea × drawArea, preserving ratio
+      const scale = Math.min(drawArea / img.width, drawArea / img.height);
+      const dw = img.width  * scale;
+      const dh = img.height * scale;
+
+      // Centre the scaled image inside the padded area
+      const dx = THUMB_PAD + (drawArea - dw) / 2;
+      const dy = THUMB_PAD + (drawArea - dh) / 2;
+
+      ctx.drawImage(img, dx, dy, dw, dh);
+
+      resolve(canvas.toDataURL("image/jpeg", 0.82));
+    };
+
+    img.onerror = () => resolve(base64Str);
+    img.src = base64Str;
+  });
+}
+
+/** Compress the company logo for the header — keeps its original aspect ratio. */
+async function compressLogo(base64Str: string, maxPx: number): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      let w = img.width;
-      let h = img.height;
-
-      if (w > maxWidth || h > maxWidth) {
-        if (w > h) {
-          h = Math.round((h * maxWidth) / w);
-          w = maxWidth;
-        } else {
-          w = Math.round((w * maxWidth) / h);
-          h = maxWidth;
-        }
-      }
-
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const w = Math.round(img.width  * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width  = w;
       canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return resolve(base64Str);
-
-      // Fill with white background in case of transparent PNGs
-      ctx.fillStyle = '#FFFFFF';
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { resolve(base64Str); return; }
+      ctx.fillStyle = "#FFFFFF";
       ctx.fillRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0, w, h);
-
-      // Compress to JPEG to aggressively save space
-      resolve(canvas.toDataURL('image/jpeg', 0.6));
+      resolve(canvas.toDataURL("image/jpeg", 0.8));
     };
     img.onerror = () => resolve(base64Str);
     img.src = base64Str;
@@ -107,13 +145,16 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
   const textStartX = imgW - 2; // Offset for text area
   const textW = cellW - textStartX;
 
-  // Pre-compress images like in generateSplitPdf.ts
-  const compressedImages: (string | null)[] = await Promise.all(
+  // Pre-process: normalise every image to a consistent square thumbnail.
+  // A fixed IMG_W × IMG_W square is drawn for every item — no exceptions.
+  const IMG_W = 42; // mm — the square drawn in the PDF cell
+
+  const normalizedImages: (string | null)[] = await Promise.all(
     lineItems.map(async (item) => {
       if (!item.imageUrl) return null;
       const b64 = getCachedImage(item.imageUrl);
       if (!b64) return null;
-      return await compressImage(b64, 1200);
+      return await normalizeToSquare(b64);
     })
   );
 
@@ -170,7 +211,7 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
   let finalLogo = logoBase64;
   if (logoBase64) {
     try {
-      finalLogo = await compressImage(logoBase64, 1500);
+      finalLogo = await compressLogo(logoBase64, 1500);
     } catch (e) {
       console.warn("Failed to compress logo", e);
     }
@@ -229,7 +270,7 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
   // --- DRAW GRID ---
   for (let i = 0; i < lineItems.length; i++) {
     const li = lineItems[i];
-    const b64 = compressedImages[i];
+    const b64 = normalizedImages[i];
 
     // Check page break
     if (curY + cellH > pageH - margin) {
@@ -252,17 +293,13 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
     doc.setLineWidth(0.3);
     doc.line(cx, curY + cellH, cx + cellW, curY + cellH);
 
-    // Draw Image
+    // Draw Image — always a fixed square, centred in the image area
     if (b64) {
       try {
-        const format = detectImageFormat(b64);
-        const props = doc.getImageProperties(b64);
-        const ratio = Math.min((imgW - 2) / props.width, (imgH - 2) / props.height);
-        const renderW = props.width * ratio;
-        const renderH = props.height * ratio;
-        const xOff = cx + (imgW - 2 - renderW) / 2;
-        const yOff = curY + 1 + (imgH - 2 - renderH) / 2;
-        doc.addImage(b64, format, xOff, yOff, renderW, renderH);
+        // Centre the fixed square within the image column area
+        const xOff = cx + (imgW - IMG_W) / 2;
+        const yOff = curY + (cellH - IMG_W) / 2;
+        doc.addImage(b64, "JPEG", xOff, yOff, IMG_W, IMG_W);
       } catch {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7);
