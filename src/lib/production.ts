@@ -38,8 +38,8 @@ function detectImageFormat(dataUrl: string): string {
 // This is the only place where images are processed for PDF output.
 // Every image in production.ts is this exact square — no exceptions.
 // ---------------------------------------------------------------------------
-const THUMB_SIZE = 400; // px — canvas resolution (higher = sharper print)
-const THUMB_PAD  = 20;  // px — whitespace on each side
+const THUMB_SIZE = 1500; // px — canvas resolution (higher = sharper print)
+const THUMB_PAD  = 60;  // px — whitespace on each side
 
 async function normalizeToSquare(base64Str: string): Promise<string> {
   return new Promise((resolve) => {
@@ -71,7 +71,7 @@ async function normalizeToSquare(base64Str: string): Promise<string> {
 
       ctx.drawImage(img, dx, dy, dw, dh);
 
-      resolve(canvas.toDataURL("image/jpeg", 0.82));
+      resolve(canvas.toDataURL("image/jpeg", 0.98));
     };
 
     img.onerror = () => resolve(base64Str);
@@ -158,10 +158,12 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
     })
   );
 
+  const { default: autoTable } = await import("jspdf-autotable");
+
   let curY = margin;
 
   // --- DRAW HEADER (First Page Only) ---
-  doc.setFont("helvetica", "italic");
+  doc.setFont("helvetica", "bolditalic");
   doc.setFontSize(8);
   doc.setTextColor(197, 160, 89);
   doc.text(`Q No. ${quotationNo}`, pageW - margin, curY, { align: "right" });
@@ -179,34 +181,38 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
   const logoW = tableW - infoW;
 
   const infoRows = [
-    [`Customer Name: ${companyName}`],
-    [`Contact Name: ${contactName}`],
-    [`Customer Address: ${address}`],
-    [`Date: ${date}`],
-    // [`Remarks: ${remarks}`],
+    ["Customer Name: ", companyName || ""],
+    ["Contact Name: ", contactName || ""],
+    ["Customer Address: ", address || ""],
+    ["Date & Quotation: ", `Date: ${date || ""}       |      Quotation: ${quotationNo || ""}`],
   ];
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-
-  const parsedRows = infoRows.map(r => {
-    const lines = doc.splitTextToSize(r[0], infoW - 4);
-    return { text: lines, height: Math.max(5, lines.length * 4 + 2) };
+  autoTable(doc, {
+    startY: curY,
+    body: infoRows,
+    margin: { left: margin },
+    tableWidth: infoW,
+    theme: "grid",
+    styles: {
+      fontSize: 9,
+      cellPadding: 1.5,
+      lineWidth: 0.25,
+      lineColor: [0, 0, 0],
+      valign: "middle",
+    },
+    columnStyles: {
+      0: { fontStyle: "bold", cellWidth: 35, fillColor: [245, 242, 235] },
+      1: { fontStyle: "bold", cellWidth: "auto" },
+    },
   });
 
-  const totalH = parsedRows.reduce((sum, r) => sum + r.height, 0);
+  const infoFinalY = (doc as any).lastAutoTable.finalY;
+  const totalH = infoFinalY - curY;
 
+  // Draw the logo box right next to the info table
   doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.3);
-  doc.rect(margin, curY, tableW, totalH);
-  doc.line(logoX, curY, logoX, curY + totalH);
-
-  let currentYOffset = curY;
-  parsedRows.forEach((row, i) => {
-    if (i > 0) doc.line(margin, currentYOffset, logoX, currentYOffset);
-    doc.text(row.text, margin + 2, currentYOffset + 3.5);
-    currentYOffset += row.height;
-  });
+  doc.setLineWidth(0.25);
+  doc.rect(logoX, curY, logoW, totalH);
 
   let finalLogo = logoBase64;
   if (logoBase64) {
@@ -219,21 +225,16 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
 
   if (finalLogo) {
     try {
-      // 1. Get the original dimensions of the logo
       const imgProps = doc.getImageProperties(finalLogo);
-
-      // 2. Set the maximum space allowed for the logo (Increase or decrease these numbers to change size)
       const maxLogoWidth = logoW - 4;
       const maxLogoHeight = totalH - 2;
 
-      // 3. Calculate the ratio to fit the image inside the max space without stretching
       const ratio = Math.min(maxLogoWidth / imgProps.width, maxLogoHeight / imgProps.height);
       const renderW = imgProps.width * ratio;
       const renderH = imgProps.height * ratio;
 
-      // 4. Calculate X and Y to center the logo nicely in the box
       const lX = logoX + 2 + (maxLogoWidth - renderW) / 2;
-      const lY = curY + (totalH - renderH) / 2;
+      const lY = curY + 1 + (maxLogoHeight - renderH) / 2;
 
       const format = detectImageFormat(finalLogo);
       doc.addImage(finalLogo, format, lX, lY, renderW, renderH);
@@ -245,26 +246,65 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
     doc.text("Brahammand\nJewellery", logoX + logoW / 2, curY + totalH / 2, { align: "center", baseline: "middle" });
     doc.setTextColor(0, 0, 0);
   }
-  let remarksHeight = 0;
+  
+  curY = infoFinalY + 1;
 
-  // Only draw this box if 'remarks' exists and isn't just empty spaces
+  // Remarks
   if (remarks && remarks.trim() !== "") {
-    // 1. Trim the remarks to remove any trailing newlines or spaces that cause empty lines
-    const remarksText = `Remarks: ${remarks.trim()}`;
-    const remarksLines = doc.splitTextToSize(remarksText, tableW - 4);
-    
-    // 2. Adjust the height multiplier. An 8pt font with standard line height takes ~3.2mm per line.
-    remarksHeight = Math.max(6, remarksLines.length * 3.5 + 2);
-
-    // Draw a full-width rectangle below the top header
-    const remarksY = curY + totalH;
-    doc.rect(margin, remarksY, tableW, remarksHeight);
-    doc.text(remarksLines, margin + 2, remarksY + 3.5); // Write the text
+    autoTable(doc, {
+      startY: curY,
+      body: [["Remarks: ", remarks.trim().replace(/\n/g, "\n")]],
+      margin: { left: margin },
+      tableWidth: tableW,
+      theme: "grid",
+      styles: {
+        fontSize: 8.5,
+        cellPadding: 2.5,
+        lineWidth: 0.25,
+        lineColor: [0, 0, 0],
+        valign: "top",
+      },
+      columnStyles: {
+        0: { fontStyle: "bold", cellWidth: 35, fillColor: [245, 242, 235], valign: "top" },
+        1: { fontStyle: "bold", cellWidth: "auto" },
+      },
+    });
+    curY = (doc as any).lastAutoTable.finalY + 4;
   }
 
-  // Update the final Y position for the products grid
-  // (If remarks is empty, remarksHeight is 0, so it skips the extra space!)
-  curY += totalH + remarksHeight + 6;
+  // Summary Line Below Header
+  const totalQty = lineItems.reduce((sum, item) => sum + (item.qty ?? 1), 0);
+  const totalGrossWtStr = lineItems.reduce((sum, item) => sum + (item.grossWeight ?? 0), 0).toFixed(3);
+  const totalNetWtStr = lineItems.reduce((sum, item) => sum + (item.netWeight ?? 0), 0).toFixed(3);
+  const totalStoneWt = lineItems.reduce((sum, item) => sum + (item.stoneWeight ?? 0), 0);
+
+  const stoneWtPart = totalStoneWt > 0
+    ? `  |  S Wt: ${totalStoneWt.toFixed(3)} g`
+    : "";
+  const summaryLine = 
+    `Items: ${lineItems.length}  |  Qty: ${totalQty}` +
+    `  |  Gross: ${totalGrossWtStr} g` +
+    `  |  Net: ${totalNetWtStr} g` +
+    stoneWtPart;
+
+  // Add much more top margin before the summary section
+  curY += 5.5;
+
+  // Write "SUMMARY" in an attractive way
+  doc.setFont("times", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(197, 160, 89);
+  doc.text("S U M M A R Y", pageW / 2, curY, { align: "center" });
+  
+  curY += 6.5;
+
+  // Reset color and write the actual summary string
+  doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.text(summaryLine, pageW / 2, curY, { align: "center" });
+  
+  curY += 9;
 
 
   // --- DRAW GRID ---
@@ -278,8 +318,8 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
       curY = margin;
 
       // Minimal header on subsequent pages
-      doc.setFont("helvetica", "italic");
-      doc.setFontSize(8);
+      doc.setFont("helvetica", "bolditalic");
+      doc.setFontSize(9);
       doc.setTextColor(197, 160, 89);
       doc.text(`Q No. ${quotationNo}`, pageW - margin, curY + 3, { align: "right" });
       curY += 8;
@@ -396,6 +436,46 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
       curY += cellH + rowGap;
     }
   }
+
+  // Add a final Y adjustment if the last row was incomplete
+  if (lineItems.length % cols !== 0) {
+    curY += cellH + rowGap;
+  }
+
+  // Check if we need to add a page for the summary table
+  if (curY > pageH - margin - 25) {
+    doc.addPage();
+    curY = margin;
+  }
+
+  const totalGrossWt = lineItems.reduce((sum, item) => sum + (item.grossWeight ?? 0), 0);
+  const totalNetWt = lineItems.reduce((sum, item) => sum + (item.netWeight ?? 0), 0);
+  
+
+  autoTable(doc, {
+    startY: curY + 5,
+    body: [
+      [
+        { content: "Total Gross Wt", styles: { halign: "center", fontStyle: "bold", fillColor: [245, 242, 235], textColor: [0, 0, 0] } },
+        { content: `Approx. ${totalGrossWt.toFixed(3)} gms`, styles: { halign: "center", fontStyle: "bold", textColor: [0, 0, 0] } }
+      ],
+      [
+        { content: "Total Net Wt", styles: { halign: "center", fontStyle: "bold", fillColor: [245, 242, 235], textColor: [0, 0, 0] } },
+        { content: `Approx. ${totalNetWt.toFixed(3)} gms`, styles: { halign: "center", fontStyle: "bold", textColor: [0, 0, 0] } }
+      ]
+    ],
+    theme: "grid",
+    margin: { left: margin, right: margin },
+    tableWidth: pageW - 2 * margin,
+    styles: {
+      lineWidth: 0.2,
+      lineColor: [0, 0, 0],
+    },
+    columnStyles: {
+      0: { cellWidth: (pageW - 2 * margin) / 2 },
+      1: { cellWidth: (pageW - 2 * margin) / 2 },
+    }
+  });
 
   // Return Blob
   return doc.output('blob');
