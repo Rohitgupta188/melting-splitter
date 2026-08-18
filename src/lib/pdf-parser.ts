@@ -215,13 +215,13 @@ export async function parsePDF(file: File): Promise<ParseResult> {
 
       const row = rowMap.get(rowKey)!;
 
-      if (designNoX !== null && Math.abs(x - designNoX) <= DESIGN_TOLERANCE) row.designNo = text;
-      if (ktX       !== null && Math.abs(x - ktX)       <= NORMAL_TOLERANCE) row.kt       = text;
-      if (colorX    !== null && Math.abs(x - colorX)    <= NORMAL_TOLERANCE) row.color    = text;
-      if (grossWtX  !== null && Math.abs(x - grossWtX)  <= NORMAL_TOLERANCE) row.grossWt  = text;
-      if (netWtX    !== null && Math.abs(x - netWtX)    <= NORMAL_TOLERANCE) row.netWt    = text;
-      if (sWtX      !== null && Math.abs(x - sWtX)      <= NORMAL_TOLERANCE) row.sWt      = text;
-      if (qtyX      !== null && Math.abs(x - qtyX)      <= NORMAL_TOLERANCE) row.qty      = text;
+      if (designNoX !== null && Math.abs(x - designNoX) <= DESIGN_TOLERANCE) row.designNo = row.designNo ? row.designNo + text : text;
+      if (ktX       !== null && Math.abs(x - ktX)       <= NORMAL_TOLERANCE) row.kt       = row.kt ? row.kt + text : text;
+      if (colorX    !== null && Math.abs(x - colorX)    <= NORMAL_TOLERANCE) row.color    = row.color ? row.color + text : text;
+      if (grossWtX  !== null && Math.abs(x - grossWtX)  <= NORMAL_TOLERANCE) row.grossWt  = row.grossWt ? row.grossWt + text : text;
+      if (netWtX    !== null && Math.abs(x - netWtX)    <= NORMAL_TOLERANCE) row.netWt    = row.netWt ? row.netWt + text : text;
+      if (sWtX      !== null && Math.abs(x - sWtX)      <= NORMAL_TOLERANCE) row.sWt      = row.sWt ? row.sWt + text : text;
+      if (qtyX      !== null && Math.abs(x - qtyX)      <= NORMAL_TOLERANCE) row.qty      = row.qty ? row.qty + text : text;
     }
 
     // Sort rows top-to-bottom (higher Y = higher on page in PDF coords)

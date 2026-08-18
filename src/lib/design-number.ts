@@ -16,10 +16,10 @@ export function normalizeDesignNumber(raw: string): string {
     designNo = designNo.replace(/^([A-Za-z]+)(\d+)/, "$1-$2");
   }
 
-  // Validate
-  if (!/^[A-Za-z]{2,6}-?\d+/.test(designNo)) {
-    return "";
-  }
+  // Removed strict validation requiring letters to allow pure numeric design numbers (e.g., "224495")
+  // if (!/^[A-Za-z]{2,6}-?\d+/.test(designNo)) {
+  //   return "";
+  // }
 
   return designNo;
 }

@@ -29,6 +29,7 @@ import {
   getImageStats,
   resetImageState,
   ImageStats,
+  getCachedImage,
 } from "@/lib/image-service";
 import { generateGroupPdfBlob } from "@/lib/generateSplitPdf";
 import { buildProductionPDF, PdfQuotationLineItem } from "@/lib/production";
@@ -93,7 +94,20 @@ const ACTIVE_STAGES = new Set<Stage>([
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+const YIELD_EVERY = 3;
+
+/**
+ * Production-grade utility to yield to the main thread.
+ * It uses the modern `scheduler.yield()` API if available, which prioritizes continuations.
+ * Otherwise, it falls back to a macrotask via setTimeout(0) when scheduler.yield() isn't available.
+ */
+async function yieldToMain(): Promise<void> {
+  if (typeof globalThis.scheduler !== "undefined" && typeof globalThis.scheduler.yield === "function") {
+    return globalThis.scheduler.yield();
+  }
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 function stageIndex(stage: Stage): number {
   if (stage === "REVIEW_GROUPS") {
@@ -132,7 +146,7 @@ export default function Home() {
       return `Invalid file type "${file.type || "unknown"}". Please upload a PDF.`;
     }
     if (file.size > MAX_FILE_SIZE) {
-      return `File exceeds the 25 MB limit (${(file.size / 1024 / 1024).toFixed(1)} MB).`;
+      return `File exceeds the 100 MB limit (${(file.size / 1024 / 1024).toFixed(1)} MB).`;
     }
     return null;
   }
@@ -235,6 +249,12 @@ export default function Home() {
         const g = processGroups[i];
         setStageDetail(`Generating PDF ${i + 1} of ${processGroups.length}: ${g.groupName}`);
         
+        // Yield to the main thread in batches to allow the UI to update and spinner to animate
+        // We yield periodically instead of after every single PDF to avoid excessive overhead
+        if ((i + 1) % YIELD_EVERY === 0) {
+          await yieldToMain();
+        }
+        
         let pdfBlob: Blob;
         if (layoutMode === "production") {
           const lineItems: PdfQuotationLineItem[] = g.items.map(item => ({
@@ -246,7 +266,7 @@ export default function Home() {
             stoneWeight: item.stoneWeight,
             metalPurity: item.kt,
             metalType: item.color,
-            imageUrl: item.imageUrl,
+            imageUrl: getCachedImage(item.imageUrl) || item.imageUrl,
             qty: item.qty,
             remarks: item.remarks
           }));

@@ -477,6 +477,16 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
     }
   });
 
+  // --- PAGE NUMBERS ---
+  const pageCount = (doc as any).internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Page ${i} of ${pageCount}`, pageW - 5, pageH - 4, { align: "right" });
+  }
+
   // Return Blob
   return doc.output('blob');
 
