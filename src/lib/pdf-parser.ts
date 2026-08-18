@@ -90,6 +90,7 @@ async function extractQuotationHeader(
 // Tolerance (in PDF units) for matching text items to column X-coordinates.
 const DESIGN_TOLERANCE = 35;  // wider because design numbers can be long
 const NORMAL_TOLERANCE = 15;
+const REMARKS_TOLERANCE = 15; // wider because remarks can be multiple words
 // Tolerance (in PDF units) for grouping text items into the same row by Y-coordinate.
 const ROW_TOLERANCE = 4;
 
@@ -180,7 +181,7 @@ export async function parsePDF(file: File): Promise<ParseResult> {
       }
     }
 
-    const { designNoX, ktX, colorX, grossWtX, netWtX, sWtX, qtyX, headerY } = cols;
+    const { designNoX, ktX, colorX, grossWtX, netWtX, sWtX, qtyX, remarksX, headerY } = cols;
 
     // Build a Y → row-data map, grouping items within ROW_TOLERANCE
     const rowMap = new Map<
@@ -193,6 +194,7 @@ export async function parsePDF(file: File): Promise<ParseResult> {
         netWt?: string;
         sWt?: string;
         qty?: string;
+        remarks?: string;
       }
     >();
 
@@ -222,6 +224,7 @@ export async function parsePDF(file: File): Promise<ParseResult> {
       if (netWtX    !== null && Math.abs(x - netWtX)    <= NORMAL_TOLERANCE) row.netWt    = row.netWt ? row.netWt + text : text;
       if (sWtX      !== null && Math.abs(x - sWtX)      <= NORMAL_TOLERANCE) row.sWt      = row.sWt ? row.sWt + text : text;
       if (qtyX      !== null && Math.abs(x - qtyX)      <= NORMAL_TOLERANCE) row.qty      = row.qty ? row.qty + text : text;
+      if (remarksX  !== null && Math.abs(x - remarksX)  <= REMARKS_TOLERANCE) row.remarks = row.remarks ? row.remarks + " " + text : text;
     }
 
     // Sort rows top-to-bottom (higher Y = higher on page in PDF coords)
@@ -276,6 +279,7 @@ export async function parsePDF(file: File): Promise<ParseResult> {
         netWeight:      Number.isNaN(netWt)   ? 0 : netWt,
         stoneWeight:    Number.isNaN(sWt)     ? 0 : sWt,
         qty:            Number.isNaN(qty)      ? 1 : qty,
+        remarks:        row.remarks,
         pageNo:         pageNo,
         imageCellX,
         imageCellWidth,

@@ -7,6 +7,7 @@ export interface HeaderColumns {
   netWtX: number | null;
   sWtX: number | null;
   qtyX: number | null;
+  remarksX: number | null;
   headerY: number | null;
 }
 
@@ -24,6 +25,7 @@ export function detectHeaders(items: any[]): HeaderColumns {
     netWtX: null,
     sWtX: null,
     qtyX: null,
+    remarksX: null,
     headerY: null,
   };
 
@@ -52,6 +54,8 @@ export function detectHeaders(items: any[]): HeaderColumns {
       cols.sWtX = x;
     } else if (/^Qt(y)?$/i.test(text) || /^Quantity$/i.test(text)) {
       cols.qtyX = x;
+    } else if (/^Remarks?$/i.test(text)) {
+      cols.remarksX = x;
     }
   }
 

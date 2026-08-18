@@ -422,7 +422,7 @@ export default function Home() {
                 disabled={isProcessing}
               />
             </label>
-            <p className="ms-dropzone-hint">PDF only · Max 25 MB</p>
+            <p className="ms-dropzone-hint">PDF only · Max 100 MB</p>
           </div>
         )}
 
