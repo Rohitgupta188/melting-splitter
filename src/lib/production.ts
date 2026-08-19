@@ -279,32 +279,47 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
   const totalStoneWt = lineItems.reduce((sum, item) => sum + (item.stoneWeight ?? 0), 0);
 
   const stoneWtPart = totalStoneWt > 0
-    ? `  |  S Wt: ${totalStoneWt.toFixed(3)} g`
+    ? `   |   S Wt: ${totalStoneWt.toFixed(3)} g`
     : "";
   const summaryLine = 
-    `Items: ${lineItems.length}  |  Qty: ${totalQty}` +
-    `  |  Gross: ${totalGrossWtStr} g` +
-    `  |  Net: ${totalNetWtStr} g` +
+    `Items: ${lineItems.length}   |   Qty: ${totalQty}` +
+    `   |   Gross: ${totalGrossWtStr} g` +
+    `   |   Net: ${totalNetWtStr} g` +
     stoneWtPart;
 
-  // Add much more top margin before the summary section
-  curY += 5.5;
+  // Add margin before the summary table
+  curY += 1.5;
 
-  // Write "SUMMARY" in an attractive way
-  doc.setFont("times", "bold");
-  doc.setFontSize(12);
-  doc.setTextColor(197, 160, 89);
-  doc.text("S U M M A R Y", pageW / 2, curY, { align: "center" });
-  
-  curY += 6.5;
+  // Draw the summary as a table
+  autoTable(doc, {
+    startY: curY,
+    head: [["S U M M A R Y"]],
+    body: [[summaryLine]],
+    margin: { left: margin },
+    tableWidth: tableW,
+    theme: "grid",
+    headStyles: {
+      fillColor: [245, 242, 235],
+      textColor: [197, 160, 89], // Gold color
+      fontStyle: "bold",
+      halign: "center",
+      fontSize: 10,
 
-  // Reset color and write the actual summary string
-  doc.setTextColor(0, 0, 0);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.5);
-  doc.text(summaryLine, pageW / 2, curY, { align: "center" });
-  
-  curY += 9;
+    },
+    bodyStyles: {
+      halign: "center",
+      fontStyle: "bold",
+      textColor: [0, 0, 0],
+      fontSize: 9.5,
+      cellPadding: 2.5,
+    },
+    styles: {
+      lineWidth: 0.25,
+      lineColor: [0, 0, 0],
+    }
+  });
+
+  curY = (doc as any).lastAutoTable.finalY + 8;
 
 
   // --- DRAW GRID ---
@@ -366,7 +381,7 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
 
     // --- Text Area ---
     doc.setTextColor(0, 0, 0);
-    const tx = cx + textStartX;
+    const tx = cx + textStartX - 2; // Shift everything left by 2 units
     let ty = curY + 4; // Start Y inside text area
 
     // Checkboxes Row (CAM, WAX, CAST)
@@ -397,32 +412,41 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
 
     // Text styling
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
+    doc.setFontSize(8.8);
 
-    const lineHeight = 4.2; // Slightly tighter line height to fit line-by-line comfortably
-    const kt = li.metalPurity?.replace(/[^0-9]/g, "") || "18";
-    const color = li.metalType?.charAt(0).toUpperCase() || "Y";
+    const lineHeight = 4.3; // Slightly tighter line height to fit line-by-line comfortably
+    const kt = li.metalPurity?.replace(/[^0-9]/g, "") || "-";
+    const color = li.metalType?.charAt(0).toUpperCase() || "-";
 
     // Write all properties
-    doc.setFont("helvetica", "bold");
+    doc.setFont("helvetica", "bold"); // Bold for Design No
     doc.text(`Design No : ${li.designNumber || "-"}`, tx, ty + 0.5);
-    doc.setFont("helvetica", "bold");
     ty += lineHeight;
 
     // Gross Wt & Karat on one line (2 columns)
-    const col2X = tx + 25; // Increased gap for 2nd column
+    const col2X = tx + 30; // Increased gap for 2nd column
+    
+    doc.setFont("helvetica", "normal"); // Normal for Gross Wt
     doc.text(`Gross Wt : ${(li.grossWeight ?? 0).toFixed(3)}`, tx, ty + 0.5);
-    doc.text(`Karat : ${kt}K`, col2X, ty + 0.5);
+    
+    doc.setFont("helvetica", "bold"); // Bold for Karat
+    doc.text(`KT : ${kt}K`, col2X, ty + 0.5);
     ty += lineHeight;
 
     // Net Wt & Color on one line (2 columns)
+    doc.setFont("helvetica", "normal"); // Normal for Net Wt
     doc.text(`Net Wt : ${(li.netWeight ?? 0).toFixed(3)}`, tx, ty + 0.5);
+    
+    doc.setFont("helvetica", "bold"); // Bold for Color
     doc.text(`Color : ${color}`, col2X, ty + 0.5);
     ty += lineHeight;
 
     // Stone Wt & Quantity on one line (2 columns)
+    doc.setFont("helvetica", "normal"); // Normal for Stone Wt
     doc.text(`Stone Wt : ${(li.stoneWeight ?? 0).toFixed(3)}`, tx, ty + 0.5);
-    doc.text(`Quantity : ${li.qty ?? 1}`, col2X, ty + 0.5);
+    
+    doc.setFont("helvetica", "bold"); // Bold for Quantity
+    doc.text(`Qty : ${li.qty ?? 1}`, col2X, ty + 0.5);
     ty += lineHeight;
 
     // Row 5: Remarks (Full width, can wrap)
