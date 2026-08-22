@@ -55,6 +55,14 @@ export function groupRows(rows: ParsedRow[], mode: SplitMode = "melting"): Group
     group.totalStoneWt += row.stoneWeight * row.qty;
   }
 
-  return Array.from(groups.values());
-}
+  const result = Array.from(groups.values());
+  
+  // Sort items within each group alphabetically (and numerically) by design number
+  for (const group of result) {
+    group.items.sort((a, b) => 
+      a.rawDesignNumber.localeCompare(b.rawDesignNumber, undefined, { numeric: true, sensitivity: 'base' })
+    );
+  }
 
+  return result;
+}
