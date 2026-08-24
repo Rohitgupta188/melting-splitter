@@ -27,14 +27,15 @@ export async function extractFallbackImages(pdfDoc: PDFDocumentProxy, rows: Pars
       canvas.height = viewport.height;
       // Set willReadFrequently on the canvas context before pdfjs renders into it.
       // This is a browser hint that improves performance of our subsequent getImageData/drawImage reads.
-      // We obtain the context purely to set the attribute; pdfjs-dist v6 manages its own rendering context.
       const _ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!_ctx) {
         console.error(`[pdf-crop] failed to get 2d context for page ${pageNo}`);
         continue;
       }
 
-      await page.render({ canvas, viewport }).promise;
+      // In pdfjs-dist v4+, render expects canvasContext. 
+      // We pass both to be safe with different versions.
+      await page.render({ canvasContext: _ctx, canvas, viewport }).promise;
 
       // Crop each row from the rendered canvas
       for (const row of pageRows) {

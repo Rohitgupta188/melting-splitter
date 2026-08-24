@@ -74,69 +74,94 @@ function scoreMatch(img: LocatedImage, row: ParsedRow): number {
 // -------------------------------------------------------------------------
 async function renderImageObjToDataUrl(page: any, imgId: string): Promise<string | null> {
   return new Promise((resolve) => {
-    // pdfjs-dist v4: objs.get() is a synchronous getter that returns the data
-    // if it's already resolved, or calls the callback when it becomes available.
-    // The API is: page.objs.get(id, callback)
-    // page.commonObjs is for shared resources (fonts, etc.).
-    // Images are in page.objs.
-    try {
-      page.objs.get(imgId, (imgData: any) => {
-        if (!imgData) {
-          resolve(null);
-          return;
-        }
+    let resolved = false;
+    const timeoutId = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        console.warn(`[pdf-native] renderImageObjToDataUrl timeout for ${imgId}`);
+        resolve(null);
+      }
+    }, 4000); // 4 second timeout
 
-        try {
-          const canvas = document.createElement("canvas");
-          canvas.width  = imgData.width;
-          canvas.height = imgData.height;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) { resolve(null); return; }
+    const handleData = (imgData: any) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeoutId);
 
-          if (imgData.bitmap) {
-            // ImageBitmap — fastest path
-            ctx.drawImage(imgData.bitmap, 0, 0);
-          } else if (imgData.data) {
-            // Raw pixel data (RGBA Uint8ClampedArray or similar)
-            const clamped = imgData.data instanceof Uint8ClampedArray
-              ? imgData.data
-              : new Uint8ClampedArray(imgData.data.buffer ?? imgData.data);
+      if (!imgData) {
+        resolve(null);
+        return;
+      }
 
-            // PDF image kind: 1 = GRAYSCALE_1BPP, 2 = RGB, 3 = RGBA
-            // If width * 4 matches data length, it's RGBA; else decode as RGB
-            let imageData: ImageData;
-            if (clamped.length === imgData.width * imgData.height * 4) {
-              imageData = new ImageData(clamped, imgData.width, imgData.height);
-            } else if (clamped.length === imgData.width * imgData.height * 3) {
-              // Convert RGB to RGBA
-              const rgba = new Uint8ClampedArray(imgData.width * imgData.height * 4);
-              for (let i = 0, j = 0; i < clamped.length; i += 3, j += 4) {
-                rgba[j]     = clamped[i];
-                rgba[j + 1] = clamped[i + 1];
-                rgba[j + 2] = clamped[i + 2];
-                rgba[j + 3] = 255;
-              }
-              imageData = new ImageData(rgba, imgData.width, imgData.height);
-            } else {
-              // Unknown format — can't decode
-              resolve(null);
-              return;
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width  = imgData.width;
+        canvas.height = imgData.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(null); return; }
+
+        if (imgData.bitmap) {
+          // ImageBitmap — fastest path
+          ctx.drawImage(imgData.bitmap, 0, 0);
+        } else if (imgData.data) {
+          // Raw pixel data (RGBA Uint8ClampedArray or similar)
+          const clamped = imgData.data instanceof Uint8ClampedArray
+            ? imgData.data
+            : new Uint8ClampedArray(imgData.data.buffer ?? imgData.data);
+
+          // PDF image kind: 1 = GRAYSCALE_1BPP, 2 = RGB, 3 = RGBA
+          // If width * 4 matches data length, it's RGBA; else decode as RGB
+          let imageData: ImageData;
+          if (clamped.length === imgData.width * imgData.height * 4) {
+            imageData = new ImageData(clamped, imgData.width, imgData.height);
+          } else if (clamped.length === imgData.width * imgData.height * 3) {
+            // Convert RGB to RGBA
+            const rgba = new Uint8ClampedArray(imgData.width * imgData.height * 4);
+            for (let i = 0, j = 0; i < clamped.length; i += 3, j += 4) {
+              rgba[j]     = clamped[i];
+              rgba[j + 1] = clamped[i + 1];
+              rgba[j + 2] = clamped[i + 2];
+              rgba[j + 3] = 255;
             }
-            ctx.putImageData(imageData, 0, 0);
+            imageData = new ImageData(rgba, imgData.width, imgData.height);
           } else {
             resolve(null);
             return;
           }
-
-          resolve(canvas.toDataURL("image/jpeg", 0.88));
-        } catch (e) {
-          console.warn("[pdf-native] canvas render error:", e);
+          ctx.putImageData(imageData, 0, 0);
+        } else {
           resolve(null);
+          return;
         }
-      });
+
+        resolve(canvas.toDataURL("image/jpeg", 0.88));
+      } catch (e) {
+        console.warn("[pdf-native] canvas render error:", e);
+        resolve(null);
+      }
+    };
+
+    try {
+      const result = page.objs.get(imgId, handleData);
+      
+      // If it returns a promise (pdfjs v4+ sometimes does this instead of/along with callback)
+      if (result && typeof result.then === 'function') {
+        result.then(handleData).catch((err: any) => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeoutId);
+            console.warn(`[pdf-native] objs.get promise error for ${imgId}:`, err);
+            resolve(null);
+          }
+        });
+      }
     } catch (e) {
-      console.warn("[pdf-native] objs.get error for", imgId, e);
-      resolve(null);
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timeoutId);
+        console.warn("[pdf-native] objs.get error for", imgId, e);
+        resolve(null);
+      }
     }
   });
 }

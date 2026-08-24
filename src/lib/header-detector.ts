@@ -1,4 +1,5 @@
 export interface HeaderColumns {
+  srX: number | null;
   imageX: number | null;    // X-coord of the "Image" column header (may not exist)
   designNoX: number | null;
   ktX: number | null;
@@ -17,6 +18,7 @@ export interface HeaderColumns {
  */
 export function detectHeaders(items: any[]): HeaderColumns {
   const cols: HeaderColumns = {
+    srX: null,
     imageX: null,
     designNoX: null,
     ktX: null,
@@ -36,7 +38,10 @@ export function detectHeaders(items: any[]): HeaderColumns {
     const x = item.transform[4];
     const y = Number(item.transform[5].toFixed(1));
 
-    if (/^Image$/i.test(text) || /^Img$/i.test(text)) {
+    if (/^Sr(\.?\s*No\.?)?$/i.test(text)) {
+      cols.srX = x;
+      if (cols.headerY === null) cols.headerY = y;
+    } else if (/^Image$/i.test(text) || /^Img$/i.test(text)) {
       cols.imageX = x;
       if (cols.headerY === null) cols.headerY = y;
     } else if (/^Design\s*No\.?$/i.test(text) || /^Design$/i.test(text)) {
@@ -46,7 +51,7 @@ export function detectHeaders(items: any[]): HeaderColumns {
       cols.ktX = x;
     } else if (/^Colou?r$/i.test(text)) {
       cols.colorX = x;
-    } else if (/^Gross(\s*Wt\.?)?$/i.test(text)) {
+    } else if (/^Gross(\s*Wt\.?|\s*W)?$/i.test(text)) {
       cols.grossWtX = x;
     } else if (/^Net(\s*Wt\.?|\s*W)?$/i.test(text)) {
       cols.netWtX = x;

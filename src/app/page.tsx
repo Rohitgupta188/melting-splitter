@@ -228,7 +228,9 @@ export default function Home() {
         
         const combinedGroup: GroupedData = {
           groupName: shortName,
-          items: finalGroups.flatMap(g => g.items),
+          items: finalGroups.flatMap(g => g.items).sort((a, b) => 
+            a.rawDesignNumber.localeCompare(b.rawDesignNumber, undefined, { numeric: true, sensitivity: 'base' })
+          ),
           totalQty: finalGroups.reduce((acc, g) => acc + g.totalQty, 0),
           totalGrossWt: finalGroups.reduce((acc, g) => acc + g.totalGrossWt, 0),
           totalNetWt: finalGroups.reduce((acc, g) => acc + g.totalNetWt, 0),

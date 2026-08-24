@@ -90,7 +90,7 @@ async function extractQuotationHeader(
 // Tolerance (in PDF units) for matching text items to column X-coordinates.
 const DESIGN_TOLERANCE = 35;  // wider because design numbers can be long
 const NORMAL_TOLERANCE = 15;
-const REMARKS_TOLERANCE = 15; // wider because remarks can be multiple words
+const REMARKS_TOLERANCE = 55; // wider because remarks can be multiple words
 // Tolerance (in PDF units) for grouping text items into the same row by Y-coordinate.
 const ROW_TOLERANCE = 4;
 
@@ -269,6 +269,16 @@ export async function parsePDF(file: File): Promise<ParseResult> {
       const imageCellTop    = rowKey + halfH;    // PDF Y is up — this is the TOP (higher value)
       const imageCellBottom = rowKey - halfH;    // this is the BOTTOM (lower value)
 
+      let cleanRemarks = row.remarks?.trim();
+      if (cleanRemarks && row.qty) {
+        const qtyStr = row.qty.trim();
+        if (qtyStr) {
+          const escapedQty = qtyStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const regex = new RegExp(`\\b${escapedQty}\\b\\s*`, 'g');
+          cleanRemarks = cleanRemarks.replace(regex, '').trim();
+        }
+      }
+
       rows.push({
         sr:             globalSr++,
         designNumber:    designNo,
@@ -279,7 +289,7 @@ export async function parsePDF(file: File): Promise<ParseResult> {
         netWeight:      Number.isNaN(netWt)   ? 0 : netWt,
         stoneWeight:    Number.isNaN(sWt)     ? 0 : sWt,
         qty:            Number.isNaN(qty)      ? 1 : qty,
-        remarks:        row.remarks,
+        remarks:        cleanRemarks || undefined,
         pageNo:         pageNo,
         imageCellX,
         imageCellWidth,
