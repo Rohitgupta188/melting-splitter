@@ -274,7 +274,7 @@ export async function parsePDF(file: File): Promise<ParseResult> {
         const qtyStr = row.qty.trim();
         if (qtyStr) {
           const escapedQty = qtyStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const regex = new RegExp(`\\b${escapedQty}\\b\\s*`, 'g');
+          const regex = new RegExp(`^\\s*\\b${escapedQty}\\b\\s*`, 'i');
           cleanRemarks = cleanRemarks.replace(regex, '').trim();
         }
       }
