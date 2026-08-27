@@ -202,6 +202,9 @@ export async function parsePDF(file: File): Promise<ParseResult> {
       const text = item.str?.trim();
       if (!text) continue;
 
+      // Filter out page numbers (e.g., "1 of 2", "Page 1 of 2")
+      if (/^(?:Page\s*\d+(?:\s*of\s*\d+)?|\d+\s*of\s*\d+)$/i.test(text)) continue;
+
       const x: number = item.transform[4];
       const y: number = Number(item.transform[5].toFixed(1));
 
@@ -217,7 +220,16 @@ export async function parsePDF(file: File): Promise<ParseResult> {
 
       const row = rowMap.get(rowKey)!;
 
-      if (designNoX !== null && Math.abs(x - designNoX) <= DESIGN_TOLERANCE) row.designNo = row.designNo ? row.designNo + text : text;
+      if (designNoX !== null && Math.abs(x - designNoX) <= DESIGN_TOLERANCE) {
+        let isDesignNo = true;
+        // Distinguish from image captions: if it's closer to the Image column, it's not a Design No.
+        if (cols.imageX !== null && Math.abs(x - cols.imageX) < Math.abs(x - designNoX)) {
+          isDesignNo = false;
+        }
+        if (isDesignNo) {
+          row.designNo = row.designNo ? row.designNo + text : text;
+        }
+      }
       if (ktX       !== null && Math.abs(x - ktX)       <= NORMAL_TOLERANCE) row.kt       = row.kt ? row.kt + text : text;
       if (colorX    !== null && Math.abs(x - colorX)    <= NORMAL_TOLERANCE) row.color    = row.color ? row.color + text : text;
       if (grossWtX  !== null && Math.abs(x - grossWtX)  <= NORMAL_TOLERANCE) row.grossWt  = row.grossWt ? row.grossWt + text : text;
@@ -230,7 +242,29 @@ export async function parsePDF(file: File): Promise<ParseResult> {
     // Sort rows top-to-bottom (higher Y = higher on page in PDF coords)
     const sortedRows = [...rowMap.entries()].sort((a, b) => b[0] - a[0]);
 
+    // Merge multi-line rows (like multi-line remarks) into the main row above them.
+    // A main row is identified by having a designNo.
+    const mergedRows: { rowKey: number; row: NonNullable<ReturnType<typeof rowMap.get>> }[] = [];
+    let currentMainRow: (typeof mergedRows)[0] | null = null;
+
     for (const [rowKey, row] of sortedRows) {
+      if (row.designNo) {
+        currentMainRow = { rowKey, row: { ...row } };
+        mergedRows.push(currentMainRow);
+      } else if (currentMainRow) {
+        // Merge text from this continuation line into the current main row
+        if (row.remarks) {
+          currentMainRow.row.remarks = currentMainRow.row.remarks 
+            ? currentMainRow.row.remarks + " " + row.remarks 
+            : row.remarks;
+        }
+        if (row.kt) currentMainRow.row.kt = currentMainRow.row.kt ? currentMainRow.row.kt + " " + row.kt : row.kt;
+        if (row.color) currentMainRow.row.color = currentMainRow.row.color ? currentMainRow.row.color + " " + row.color : row.color;
+      }
+    }
+
+    for (let i = 0; i < mergedRows.length; i++) {
+      const { rowKey, row } = mergedRows[i];
       if (!row.designNo) continue;
 
       // rawDesignNumber = exact string from the PDF (e.g. "TRPD073-c")
@@ -250,9 +284,9 @@ export async function parsePDF(file: File): Promise<ParseResult> {
       // We use the text Y as the center of the row and estimate row height from
       // the gap between adjacent rows, using the full inter-row gap (not midpoints).
       // In PDF coordinate space Y increases upward, so higher Y means closer to top.
-      const rowIdx = sortedRows.findIndex(r => r[0] === rowKey);
-      const prevY = rowIdx > 0 ? sortedRows[rowIdx - 1][0] : rowKey;
-      const nextY = rowIdx < sortedRows.length - 1 ? sortedRows[rowIdx + 1][0] : rowKey;
+      const rowIdx = i;
+      const prevY = rowIdx > 0 ? mergedRows[rowIdx - 1].rowKey : rowKey;
+      const nextY = rowIdx < mergedRows.length - 1 ? mergedRows[rowIdx + 1].rowKey : rowKey;
       const rowHeight = rowIdx > 0
         ? (prevY - rowKey) / 2           // half the gap to the row above
         : (rowKey - nextY) / 2;           // fall back to half the gap below
@@ -270,12 +304,17 @@ export async function parsePDF(file: File): Promise<ParseResult> {
       const imageCellBottom = rowKey - halfH;    // this is the BOTTOM (lower value)
 
       let cleanRemarks = row.remarks?.trim();
-      if (cleanRemarks && row.qty) {
-        const qtyStr = row.qty.trim();
-        if (qtyStr) {
-          const escapedQty = qtyStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const regex = new RegExp(`^\\s*\\b${escapedQty}\\b\\s*`, 'i');
-          cleanRemarks = cleanRemarks.replace(regex, '').trim();
+      if (cleanRemarks) {
+        // Strip trailing page numbers (e.g., "1 of 2" or "Page 1 of 2") that were merged as continuation lines
+        cleanRemarks = cleanRemarks.replace(/\s+(?:Page\s*)?\d+\s*of\s*\d+$/i, '').trim();
+
+        if (row.qty) {
+          const qtyStr = row.qty.trim();
+          if (qtyStr) {
+            const escapedQty = qtyStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`^\\s*\\b${escapedQty}\\b\\s*`, 'i');
+            cleanRemarks = cleanRemarks.replace(regex, '').trim();
+          }
         }
       }
 
