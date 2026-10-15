@@ -416,7 +416,7 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
 
     const lineHeight = 4.3; // Slightly tighter line height to fit line-by-line comfortably
     const kt = li.metalPurity?.replace(/[^0-9]/g, "") || "-";
-    const color = li.metalType?.charAt(0).toUpperCase() || "-";
+    const color = li.metalType && li.metalType.toLowerCase() !== "unknown" ? li.metalType.charAt(0).toUpperCase() : "-";
 
     // Write all properties
     doc.setFont("helvetica", "bold"); // Bold for Design No
