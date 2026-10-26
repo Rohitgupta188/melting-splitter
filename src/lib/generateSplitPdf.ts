@@ -1,6 +1,7 @@
 import { GroupedData } from "./grouping";
 import { getCachedImage } from "./image-service";
 import { QuotationHeader } from "./types";
+import { cropWhitespaceAndCompress } from "./image-crop";
 
 /** Detect image format from a base64 data-URL prefix. */
 function detectImageFormat(b64: string): "JPEG" | "PNG" | "WEBP" {
@@ -10,39 +11,7 @@ function detectImageFormat(b64: string): "JPEG" | "PNG" | "WEBP" {
 }
 
 async function compressImage(base64Str: string, maxWidth: number): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      let w = img.width;
-      let h = img.height;
-      
-      if (w > maxWidth || h > maxWidth) {
-        if (w > h) {
-          h = Math.round((h * maxWidth) / w);
-          w = maxWidth;
-        } else {
-          w = Math.round((w * maxWidth) / h);
-          h = maxWidth;
-        }
-      }
-      
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return resolve(base64Str);
-      
-      // Fill with white background in case of transparent PNGs
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, w, h);
-      ctx.drawImage(img, 0, 0, w, h);
-      
-      // Compress to JPEG to aggressively save space
-      resolve(canvas.toDataURL('image/jpeg', 0.6));
-    };
-    img.onerror = () => resolve(base64Str);
-    img.src = base64Str;
-  });
+  return cropWhitespaceAndCompress(base64Str, maxWidth, 0.7);
 }
 
 export async function generateGroupPdfBlob(
@@ -143,7 +112,7 @@ export async function generateGroupPdfBlob(
   const IMAGE_COL = 1;
   const ROW_H     = 35;
 
-  // Pre-compress images
+  // Pre-compress product images
   const compressedImages: Record<string, string> = {};
   await Promise.all(
     group.items.map(async (item) => {
@@ -204,36 +173,39 @@ export async function generateGroupPdfBlob(
     alternateRowStyles: { fillColor: [249, 246, 240] },
 
     didDrawCell(data: any) {
-      if (data.section !== "body" || data.column.index !== IMAGE_COL) return;
+      if (data.section !== "body") return;
 
       const item = group.items[data.row.index];
       if (!item) return;
 
-      const b64 = item.imageUrl ? compressedImages[item.imageUrl] : null;
-      if (!b64) return;
+      // ── Product image column ───────────────────────────────────────────────
+      if (data.column.index === IMAGE_COL) {
+        const b64 = item.imageUrl ? compressedImages[item.imageUrl] : null;
+        if (!b64) return;
 
-      const { x, y, width, height } = data.cell;
-      try {
-        const pad = 0.5;
-        const props = doc.getImageProperties(b64);
-        const cellW = width - pad * 2;
-        const cellH = height - pad * 2;
-        
-        const imgRatio = props.width / props.height;
-        let finalW = cellW;
-        let finalH = cellW / imgRatio;
-        
-        if (finalH > cellH) {
-          finalH = cellH;
-          finalW = cellH * imgRatio;
+        const { x, y, width, height } = data.cell;
+        try {
+          const pad = 0.5;
+          const props = doc.getImageProperties(b64);
+          const cellW = width - pad * 2;
+          const cellH = height - pad * 2;
+
+          const imgRatio = props.width / props.height;
+          let finalW = cellW;
+          let finalH = cellW / imgRatio;
+
+          if (finalH > cellH) {
+            finalH = cellH;
+            finalW = cellH * imgRatio;
+          }
+
+          const imgX = x + (width - finalW) / 2;
+          const imgY = y + (height - finalH) / 2;
+
+          doc.addImage(b64, "JPEG", imgX, imgY, finalW, finalH);
+        } catch (e) {
+          console.warn("[generateSplitPdf] addImage failed for", item.designNumber, e);
         }
-        
-        const imgX = x + (width - finalW) / 2;
-        const imgY = y + (height - finalH) / 2;
-        
-        doc.addImage(b64, "JPEG", imgX, imgY, finalW, finalH);
-      } catch (e) {
-        console.warn("[generateSplitPdf] addImage failed for", item.designNumber, e);
       }
     },
   });
