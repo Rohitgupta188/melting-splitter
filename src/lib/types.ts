@@ -30,4 +30,6 @@ export interface ParsedRow {
   imageUrl?: string; // Resolved from Image Service (Catalogue, Native, or Crop)
   imageSource?: "catalogue" | "pdf-native" | "pdf-crop" | "missing";
   itemType?: string; // Resolved from MongoDB for category splitting
+  reserved1?: number; // CZ.Wt from MongoDB
+  reserved3?: number; // BS.wt from MongoDB
 }
