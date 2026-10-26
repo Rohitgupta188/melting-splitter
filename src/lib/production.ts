@@ -9,6 +9,8 @@ export interface PdfQuotationLineItem {
   grossWeight?: number;
   netWeight?: number;
   stoneWeight?: number;
+  reserved1?: number;
+  reserved3?: number,
   metalPurity?: string;
   metalType?: string;
   imageUrl?: string;
@@ -25,58 +27,24 @@ function detectImageFormat(dataUrl: string): string {
   return "JPEG"; // safe default
 }
 
+import { normalizeToSquareWithCrop } from "./image-crop";
+
 // ---------------------------------------------------------------------------
 // normalizeToSquare
 //
 // Converts ANY image (portrait, landscape, square) into a perfectly consistent
-// square JPEG thumbnail:
+// square JPEG thumbnail with intelligent whitespace autocrop:
 //   • Fixed pixel dimensions (THUMB_SIZE × THUMB_SIZE)
+//   • Automatically trims wide empty margins (e.g. 1920x1080 CAD renders)
 //   • White background — eliminates dark/black surrounds from native PDF images
-//   • Inner padding so the subject never touches the edge
-//   • object-fit: contain — scaled to fit, never cropped, never stretched
-//
-// This is the only place where images are processed for PDF output.
-// Every image in production.ts is this exact square — no exceptions.
+//   • Balanced breathing room padding around the jewelry subject
+//   • Scaled to fill the square cell beautifully and clearly
 // ---------------------------------------------------------------------------
 const THUMB_SIZE = 1500; // px — canvas resolution (higher = sharper print)
-const THUMB_PAD  = 60;  // px — whitespace on each side
+const THUMB_PAD  = 10;  // px — whitespace on each side
 
 async function normalizeToSquare(base64Str: string): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-
-    img.onload = () => {
-      const canvas  = document.createElement("canvas");
-      canvas.width  = THUMB_SIZE;
-      canvas.height = THUMB_SIZE;
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) { resolve(base64Str); return; }
-
-      // White background — covers dark/transparent source images
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, THUMB_SIZE, THUMB_SIZE);
-
-      // Drawable area (canvas minus padding on all sides)
-      const drawArea = THUMB_SIZE - THUMB_PAD * 2;
-
-      // Scale image to fit inside drawArea × drawArea, preserving ratio
-      const scale = Math.min(drawArea / img.width, drawArea / img.height);
-      const dw = img.width  * scale;
-      const dh = img.height * scale;
-
-      // Centre the scaled image inside the padded area
-      const dx = THUMB_PAD + (drawArea - dw) / 2;
-      const dy = THUMB_PAD + (drawArea - dh) / 2;
-
-      ctx.drawImage(img, dx, dy, dw, dh);
-
-      resolve(canvas.toDataURL("image/jpeg", 0.98));
-    };
-
-    img.onerror = () => resolve(base64Str);
-    img.src = base64Str;
-  });
+  return normalizeToSquareWithCrop(base64Str, THUMB_SIZE, THUMB_PAD);
 }
 
 /** Compress the company logo for the header — keeps its original aspect ratio. */
@@ -277,15 +245,25 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
   const totalGrossWtStr = lineItems.reduce((sum, item) => sum + (item.grossWeight ?? 0), 0).toFixed(3);
   const totalNetWtStr = lineItems.reduce((sum, item) => sum + (item.netWeight ?? 0), 0).toFixed(3);
   const totalStoneWt = lineItems.reduce((sum, item) => sum + (item.stoneWeight ?? 0), 0);
+  const totalCzWt = lineItems.reduce((sum, item) => sum + (item.reserved1 ?? 0), 0);
+  const totalBsWt = lineItems.reduce((sum, item) => sum + (item.reserved3 ?? 0), 0);
 
   const stoneWtPart = totalStoneWt > 0
     ? `   |   S Wt: ${totalStoneWt.toFixed(3)} g`
+    : "";
+  const czPart = totalCzWt > 0
+    ? `   |   CZ: ${totalCzWt.toFixed(3)} g`
+    : "";
+  const bsPart = totalBsWt > 0
+    ? `   |   BS: ${totalBsWt.toFixed(3)} g`
     : "";
   const summaryLine = 
     `Items: ${lineItems.length}   |   Qty: ${totalQty}` +
     `   |   Gross: ${totalGrossWtStr} g` +
     `   |   Net: ${totalNetWtStr} g` +
-    stoneWtPart;
+    stoneWtPart +
+    czPart +
+    bsPart;
 
   // Add margin before the summary table
   curY += 1.5;
@@ -424,7 +402,7 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
     ty += lineHeight;
 
     // Gross Wt & Karat on one line (2 columns)
-    const col2X = tx + 30; // Increased gap for 2nd column
+    const col2X = tx + 27; // Column 2 X position
     
     doc.setFont("helvetica", "normal"); // Normal for Gross Wt
     doc.text(`Gross Wt : ${(li.grossWeight ?? 0).toFixed(3)}`, tx, ty + 0.5);
@@ -449,7 +427,23 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
     doc.text(`Qty : ${li.qty ?? 1}`, col2X, ty + 0.5);
     ty += lineHeight;
 
-    // Row 5: Remarks (Full width, can wrap)
+    // CZ.Wt & BS.wt on one line (2 columns) - only show if present and > 0, like remarks
+    const czWt = Number(li.reserved1) || 0;
+    const bsWt = Number(li.reserved3) || 0;
+    if (czWt > 0 || bsWt > 0) {
+      doc.setFont("helvetica", "normal");
+      if (czWt > 0 && bsWt > 0) {
+        doc.text(`CZ Wt : ${czWt.toFixed(3)}`, tx, ty + 0.5);
+        doc.text(`BS Wt : ${bsWt.toFixed(3)}`, col2X, ty + 0.5);
+      } else if (czWt > 0) {
+        doc.text(`CZ Wt : ${czWt.toFixed(3)}`, tx, ty + 0.5);
+      } else {
+        doc.text(`BS Wt : ${bsWt.toFixed(3)}`, tx, ty + 0.5);
+      }
+      ty += lineHeight;
+    }
+
+    // Row 6: Remarks (Full width, can wrap)
     if (li.remarks) {
       const lines = doc.splitTextToSize(`Remarks: ${li.remarks}`, textW - 1);
       doc.text(lines, tx, ty + 1);
@@ -474,20 +468,36 @@ export async function buildProductionPDF(params: BuildProductionPDFParams): Prom
 
   const totalGrossWt = lineItems.reduce((sum, item) => sum + (item.grossWeight ?? 0), 0);
   const totalNetWt = lineItems.reduce((sum, item) => sum + (item.netWeight ?? 0), 0);
-  
+  const totalCzWtVal = lineItems.reduce((sum, item) => sum + (item.reserved1 ?? 0), 0);
+  const totalBsWtVal = lineItems.reduce((sum, item) => sum + (item.reserved3 ?? 0), 0);
+
+  const bottomTableBody: any[] = [
+    [
+      { content: "Total Gross Wt", styles: { halign: "center", fontStyle: "bold", fillColor: [245, 242, 235], textColor: [0, 0, 0] } },
+      { content: `Approx. ${totalGrossWt.toFixed(3)} gms`, styles: { halign: "center", fontStyle: "bold", textColor: [0, 0, 0] } }
+    ],
+    [
+      { content: "Total Net Wt", styles: { halign: "center", fontStyle: "bold", fillColor: [245, 242, 235], textColor: [0, 0, 0] } },
+      { content: `Approx. ${totalNetWt.toFixed(3)} gms`, styles: { halign: "center", fontStyle: "bold", textColor: [0, 0, 0] } }
+    ]
+  ];
+
+  if (totalCzWtVal > 0) {
+    bottomTableBody.push([
+      { content: "Total CZ.Wt", styles: { halign: "center", fontStyle: "bold", fillColor: [245, 242, 235], textColor: [0, 0, 0] } },
+      { content: `Approx. ${totalCzWtVal.toFixed(3)} gms`, styles: { halign: "center", fontStyle: "bold", textColor: [0, 0, 0] } }
+    ]);
+  }
+  if (totalBsWtVal > 0) {
+    bottomTableBody.push([
+      { content: "Total BS.wt", styles: { halign: "center", fontStyle: "bold", fillColor: [245, 242, 235], textColor: [0, 0, 0] } },
+      { content: `Approx. ${totalBsWtVal.toFixed(3)} gms`, styles: { halign: "center", fontStyle: "bold", textColor: [0, 0, 0] } }
+    ]);
+  }
 
   autoTable(doc, {
     startY: curY + 5,
-    body: [
-      [
-        { content: "Total Gross Wt", styles: { halign: "center", fontStyle: "bold", fillColor: [245, 242, 235], textColor: [0, 0, 0] } },
-        { content: `Approx. ${totalGrossWt.toFixed(3)} gms`, styles: { halign: "center", fontStyle: "bold", textColor: [0, 0, 0] } }
-      ],
-      [
-        { content: "Total Net Wt", styles: { halign: "center", fontStyle: "bold", fillColor: [245, 242, 235], textColor: [0, 0, 0] } },
-        { content: `Approx. ${totalNetWt.toFixed(3)} gms`, styles: { halign: "center", fontStyle: "bold", textColor: [0, 0, 0] } }
-      ]
-    ],
+    body: bottomTableBody,
     theme: "grid",
     margin: { left: margin, right: margin },
     tableWidth: pageW - 2 * margin,
