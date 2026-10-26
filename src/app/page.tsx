@@ -266,6 +266,8 @@ export default function Home() {
             grossWeight: item.grossWeight,
             netWeight: item.netWeight,
             stoneWeight: item.stoneWeight,
+            reserved1: item.reserved1,
+            reserved3: item.reserved3,
             metalPurity: item.kt,
             metalType: item.color,
             imageUrl: getCachedImage(item.imageUrl) || item.imageUrl,
