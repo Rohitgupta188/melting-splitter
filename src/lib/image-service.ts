@@ -72,6 +72,8 @@ async function runWithConcurrency<T>(
   return results;
 }
 
+import { optimizeImageKitUrl } from "./image-crop";
+
 // ---------------------------------------------------------------------------
 // Internal: fetch one image through the server-side proxy.
 // ---------------------------------------------------------------------------
@@ -80,8 +82,15 @@ async function fetchBase64ThroughProxy(url: string): Promise<string | null> {
     return imageCache.get(url)!;
   }
 
+  const targetUrl = optimizeImageKitUrl(url);
+
   try {
-    const resp = await fetch(`/api/image-proxy?url=${encodeURIComponent(url)}`);
+    let resp = await fetch(`/api/image-proxy?url=${encodeURIComponent(targetUrl)}`);
+
+    // If transformed fetch failed, fallback to original URL
+    if (!resp.ok && targetUrl !== url) {
+      resp = await fetch(`/api/image-proxy?url=${encodeURIComponent(url)}`);
+    }
 
     if (!resp.ok) {
       return null;
@@ -127,7 +136,7 @@ export async function resolveImages(rows: ParsedRow[], pdfDoc: PDFDocumentProxy)
   const allLookup  = [...new Set([...uniqueRaw, ...uniqueNorm])];
 
   // Step 2 – batch DB lookup with both forms
-  let productMap: Record<string, { imageUrl?: string, itemType?: string }> = {};
+  let productMap: Record<string, { imageUrl?: string, itemType?: string, reserved1?: number | string, reserved3?: number | string }> = {};
   try {
     const res = await fetch("/api/images-lookup", {
       method: "POST",
@@ -147,7 +156,7 @@ export async function resolveImages(rows: ParsedRow[], pdfDoc: PDFDocumentProxy)
     console.error("[image-service] images-lookup network error:", err);
   }
 
-  // Step 3 – assign imageUrls and itemType to rows
+  // Step 3 – assign imageUrls, itemType, and reserved weights to rows
   for (const row of rows) {
     const data = productMap[row.rawDesignNumber] ?? productMap[row.designNumber];
     if (data) {
@@ -156,6 +165,12 @@ export async function resolveImages(rows: ParsedRow[], pdfDoc: PDFDocumentProxy)
         row.imageSource = "catalogue";
       }
       if (data.itemType) row.itemType = data.itemType;
+      if (data.reserved1 !== undefined && data.reserved1 !== null) {
+        row.reserved1 = typeof data.reserved1 === "number" ? data.reserved1 : parseFloat(String(data.reserved1)) || 0;
+      }
+      if (data.reserved3 !== undefined && data.reserved3 !== null) {
+        row.reserved3 = typeof data.reserved3 === "number" ? data.reserved3 : parseFloat(String(data.reserved3)) || 0;
+      }
     }
   }
 
