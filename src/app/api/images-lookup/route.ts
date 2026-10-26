@@ -34,7 +34,41 @@ export async function POST(req: Request) {
 
     await connectDB();
 
-    const productMap: Record<string, { imageUrl?: string, itemType?: string, reserved1?: number | string, reserved3?: number | string }> = {};
+    interface ProductLookupData {
+      imageUrl?: string;
+      itemType?: string;
+      reserved1?: number | string;
+      reserved3?: number | string;
+    }
+
+    function mergeProductData(
+      existing: ProductLookupData | undefined,
+      incoming: any
+    ): ProductLookupData {
+      if (!existing) {
+        return {
+          imageUrl: incoming.imageUrl || undefined,
+          itemType: incoming.itemType || undefined,
+          reserved1: incoming.reserved1,
+          reserved3: incoming.reserved3,
+        };
+      }
+
+      const currentR1 = Number(existing.reserved1) || 0;
+      const incomingR1 = Number(incoming.reserved1) || 0;
+      const currentR3 = Number(existing.reserved3) || 0;
+      const incomingR3 = Number(incoming.reserved3) || 0;
+
+      return {
+        imageUrl: incoming.imageUrl || existing.imageUrl,
+        itemType: incoming.itemType || existing.itemType,
+        // Preserve positive weights; never overwrite positive weight with 0 or undefined
+        reserved1: incomingR1 > 0 ? incoming.reserved1 : (currentR1 > 0 ? existing.reserved1 : incoming.reserved1 ?? existing.reserved1),
+        reserved3: incomingR3 > 0 ? incoming.reserved3 : (currentR3 > 0 ? existing.reserved3 : incoming.reserved3 ?? existing.reserved3),
+      };
+    }
+
+    const productMap: Record<string, ProductLookupData> = {};
 
     // ── Layer 1: exact match on designNumber ──────────────────────────
     // Uses the raw PDF string (e.g. "TRPD073-c") which is exactly what MongoDB
@@ -47,12 +81,7 @@ export async function POST(req: Request) {
 
     for (const p of layer1) {
       if (p.designNumber && designNumbers.includes(p.designNumber)) {
-        productMap[p.designNumber] = {
-          imageUrl: p.imageUrl,
-          itemType: p.itemType,
-          reserved1: p.reserved1,
-          reserved3: p.reserved3,
-        };
+        productMap[p.designNumber] = mergeProductData(productMap[p.designNumber], p);
         foundByLayer1.add(p.designNumber);
       }
     }
@@ -101,14 +130,19 @@ export async function POST(req: Request) {
         const raws = baseToRaws.get(base) ?? baseToRaws.get(base.toLowerCase());
         if (raws) {
           for (const raw of raws) {
-            productMap[raw] = {
-              imageUrl: p.imageUrl,
-              itemType: p.itemType,
-              reserved1: p.reserved1,
-              reserved3: p.reserved3,
-            };
+            productMap[raw] = mergeProductData(productMap[raw], p);
           }
         }
+      }
+    }
+
+    // Cross-map normalized and raw numbers so both keys have the merged data
+    for (const raw of rawNumbers) {
+      const norm = normalizeDesignNumber(raw);
+      if (!productMap[raw] && norm && productMap[norm]) {
+        productMap[raw] = productMap[norm];
+      } else if (norm && !productMap[norm] && productMap[raw]) {
+        productMap[norm] = productMap[raw];
       }
     }
 
