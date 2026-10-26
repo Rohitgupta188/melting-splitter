@@ -34,14 +34,14 @@ export async function POST(req: Request) {
 
     await connectDB();
 
-    const productMap: Record<string, { imageUrl?: string, itemType?: string }> = {};
+    const productMap: Record<string, { imageUrl?: string, itemType?: string, reserved1?: number | string, reserved3?: number | string }> = {};
 
     // ── Layer 1: exact match on designNumber ──────────────────────────
     // Uses the raw PDF string (e.g. "TRPD073-c") which is exactly what MongoDB
     // stores in the designNumber field.
     const layer1 = await Product.find({
       designNumber: { $in: designNumbers }
-    }).select('designNumber imageUrl itemType').lean() as any[];
+    }).select('designNumber imageUrl itemType reserved1 reserved3').lean() as any[];
 
     const foundByLayer1 = new Set<string>();
 
@@ -49,7 +49,9 @@ export async function POST(req: Request) {
       if (p.designNumber && designNumbers.includes(p.designNumber)) {
         productMap[p.designNumber] = {
           imageUrl: p.imageUrl,
-          itemType: p.itemType
+          itemType: p.itemType,
+          reserved1: p.reserved1,
+          reserved3: p.reserved3,
         };
         foundByLayer1.add(p.designNumber);
       }
@@ -87,7 +89,7 @@ export async function POST(req: Request) {
 
       const layer2 = await Product.find({
         imageName: { $in: imageNamesToSearch },
-      }).select('imageName imageUrl itemType').lean() as any[];
+      }).select('imageName imageUrl itemType reserved1 reserved3').lean() as any[];
 
       for (const p of layer2) {
         if (!p.imageName) continue;
@@ -101,7 +103,9 @@ export async function POST(req: Request) {
           for (const raw of raws) {
             productMap[raw] = {
               imageUrl: p.imageUrl,
-              itemType: p.itemType
+              itemType: p.itemType,
+              reserved1: p.reserved1,
+              reserved3: p.reserved3,
             };
           }
         }
