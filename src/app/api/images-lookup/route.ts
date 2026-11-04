@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import { Product } from '@/models/Product.model';
+import { ImageIndex } from '@/models/ImageIndex.model';
 import { normalizeDesignNumber } from '@/lib/design-number';
 
 // ---------------------------------------------------------------------------
@@ -131,6 +132,49 @@ export async function POST(req: Request) {
         if (raws) {
           for (const raw of raws) {
             productMap[raw] = mergeProductData(productMap[raw], p);
+          }
+        }
+      }
+    }
+
+    // ── Layer 3: image_index fallback for anything still missing an imageUrl ──
+    const missingImageDesigns = designNumbers.filter((d: string) => {
+      const existing = productMap[d] || (normalizeDesignNumber(d) ? productMap[normalizeDesignNumber(d)] : undefined);
+      return !existing || !existing.imageUrl;
+    });
+
+    if (missingImageDesigns.length > 0) {
+      const baseToRaws = new Map<string, string[]>();
+      const imageNamesToSearch: string[] = [];
+
+      for (const raw of missingImageDesigns) {
+        let base = stripVariantSuffix(raw);
+        base = normalizeDesignNumber(base) || base;
+        const names = [
+          `${base}.jpg`, `${base}.JPG`, `${base}.jpeg`, `${base}.JPEG`, `${base}.png`, `${base}.PNG`,
+          `${raw}.jpg`, `${raw}.JPG`, `${raw}.jpeg`, `${raw}.JPEG`, `${raw}.png`, `${raw}.PNG`
+        ];
+
+        const baseKey = base.toLowerCase();
+        if (!baseToRaws.has(baseKey)) {
+          baseToRaws.set(baseKey, []);
+          imageNamesToSearch.push(...names);
+        }
+        baseToRaws.get(baseKey)!.push(raw);
+      }
+
+      const layer3 = await ImageIndex.find({
+        imageName: { $in: imageNamesToSearch },
+      }).select('imageName imageUrl').lean() as any[];
+
+      for (const p of layer3) {
+        if (!p.imageName || !p.imageUrl) continue;
+        const base = (p.imageName as string).replace(/\.[^.]+$/, "").toLowerCase();
+        const strippedBase = stripVariantSuffix(base).toLowerCase();
+        const raws = baseToRaws.get(base) || baseToRaws.get(strippedBase);
+        if (raws) {
+          for (const raw of raws) {
+            productMap[raw] = mergeProductData(productMap[raw], { imageUrl: p.imageUrl });
           }
         }
       }
