@@ -231,3 +231,16 @@ export function getCachedImage(url: string | undefined): string | null {
   
   return imageCache.get(url) ?? null;
 }
+
+// ---------------------------------------------------------------------------
+// Public: pre-fetch and cache catalogue images for manual orders / PDFs
+// ---------------------------------------------------------------------------
+export async function cacheCatalogueImages(urls: (string | undefined)[]): Promise<void> {
+  const validUrls = urls.filter((u): u is string => Boolean(u && !u.startsWith("data:image/")));
+  const uniqueUrls = [...new Set(validUrls)];
+  const toFetch = uniqueUrls.filter(u => !imageCache.has(u));
+  if (toFetch.length === 0) return;
+  const tasks = toFetch.map(url => () => fetchBase64ThroughProxy(url));
+  await runWithConcurrency(tasks, 8);
+}
+
