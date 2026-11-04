@@ -23,6 +23,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Protocol not allowed' }, { status: 400 });
   }
 
+  // Security (SSRF Protection): Block requests targeting localhost or private internal networks
+  const hostname = parsedUrl.hostname.toLowerCase();
+  if (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '0.0.0.0' ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('10.') ||
+    hostname.startsWith('172.16.') ||
+    hostname === '169.254.169.254' ||
+    hostname.endsWith('.internal') ||
+    hostname.endsWith('.local')
+  ) {
+    return NextResponse.json({ error: 'Restricted host' }, { status: 403 });
+  }
+
   try {
     const upstream = await fetch(rawUrl, {
       headers: { 'User-Agent': 'BrahammandJewels-ImageProxy/1.0' },
