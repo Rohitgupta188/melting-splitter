@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import {
   Upload,
   FileDown,
@@ -18,6 +18,9 @@ import {
   Files,
   Circle,
   CheckCircle2,
+  Sparkles,
+  ClipboardList,
+  Printer,
 } from "lucide-react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
@@ -34,6 +37,7 @@ import {
 import { generateGroupPdfBlob } from "@/lib/generateSplitPdf";
 import { buildProductionPDF, PdfQuotationLineItem } from "@/lib/production";
 import { ParsedRow, QuotationHeader } from "@/lib/types";
+import { ManualOrderPlace } from "@/components/ManualOrderPlace";
 
 import logoImg from "./icon.png";
 
@@ -120,6 +124,7 @@ function stageIndex(stage: Stage): number {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function Home() {
+  const [activeTab,     setActiveTab]     = useState<"SPLITTER" | "MANUAL_ORDER">("SPLITTER");
   const [dragActive,    setDragActive]    = useState(false);
   const [stage,         setStage]         = useState<Stage>("IDLE");
   const [errorMsg,      setErrorMsg]      = useState<string | null>(null);
@@ -194,7 +199,6 @@ export default function Home() {
       setGroups(grouped);
       setQuotationHeader(header);
       
-      const imgStats = getImageStats();
       setStageDetail(`Resolved ${rows.length} images. Found ${rows.length} items across ${grouped.length} categories.`);
       setStage("REVIEW_GROUPS");
     } catch (err: any) {
@@ -377,26 +381,57 @@ export default function Home() {
   const currentStepIdx = stageIndex(stage);
 
   return (
-    <div className="ms-root">
+    <div className={`ms-root ${activeTab === "MANUAL_ORDER" ? "ms-root--manual-order" : ""}`}>
       {/* ── Background orbs ── */}
-      <div className="ms-orb ms-orb-1" aria-hidden />
-      <div className="ms-orb ms-orb-2" aria-hidden />
 
-      <div className="ms-container">
+      <div className={`ms-container ${activeTab === "MANUAL_ORDER" ? "ms-container--manual-order" : stage === "REVIEW_GROUPS" ? "ms-container--wide" : ""}`}>
 
         {/* ── Header ── */}
-        <header className="ms-header">
-          <div className="ms-logo">
-            <Layers className="ms-logo-icon" />
-          </div>
-          <h1 className="ms-title">Melting Splitter</h1>
-          <p className="ms-subtitle">
-            Split jewellery quotation PDFs by&nbsp;KT&nbsp;+&nbsp;Color
-          </p>
+        <header className="text-center mb-2">
+          {activeTab === "MANUAL_ORDER" ? (
+            <div className="flex flex-col items-center">
+              <h1 className="font-serif text-2xl sm:text-3xl text-[#d4af37] font-normal tracking-tight mb-1">
+                Create Manual Order
+              </h1>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center">
+              <h1 className="font-serif text-2xl sm:text-3xl text-[#d4af37] font-normal tracking-tight mb-1">
+                Melting Splitter
+              </h1>
+            </div>
+          )}
         </header>
 
-        {/* ── Upload Zone ── */}
-        {showDropzone && (
+        {/* ── Navigation Tabs ── */}
+        <nav className="ms-nav-tabs mb-4" aria-label="Feature navigation">
+          <button
+            type="button"
+            id="tab-splitter"
+            onClick={() => setActiveTab("SPLITTER")}
+            className={`ms-nav-tab ${activeTab === "SPLITTER" ? "ms-nav-tab--active" : ""}`}
+          >
+            <FileText size={16} />
+            <span>Split Quotation PDF</span>
+          </button>
+          <button
+            type="button"
+            id="tab-manual-order"
+            onClick={() => setActiveTab("MANUAL_ORDER")}
+            className={`ms-nav-tab ${activeTab === "MANUAL_ORDER" ? "ms-nav-tab--active" : ""}`}
+          >
+            <Printer size={16} />
+            <span>Manual Order Place</span>
+          </button>
+        </nav>
+
+        {/* ── Main Feature Content ── */}
+        {activeTab === "MANUAL_ORDER" ? (
+          <ManualOrderPlace />
+        ) : (
+          <>
+            {/* ── Upload Zone ── */}
+            {showDropzone && (
           <div
             id="dropzone"
             className={`ms-dropzone ${dragActive ? "ms-dropzone--active" : ""} ${
@@ -407,16 +442,51 @@ export default function Home() {
             onDrop={handleDrop}
             role="region"
             aria-label="PDF upload area"
+            style={{
+              border: "1.5px dashed rgba(216, 168, 78, 0.35)",
+              borderRadius: "16px",
+              padding: "1.75rem 2rem",
+              textAlign: "center",
+              cursor: "pointer",
+              transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+              background: "rgba(14, 20, 34, 0.88)",
+              backdropFilter: "blur(20px)",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "0.45rem",
+            }}
           >
-            <Upload className="ms-dropzone-icon" />
-            <p className="ms-dropzone-primary">
+            <div style={{
+              width: 42, height: 42, borderRadius: "10px",
+              background: "rgba(216,168,78,0.12)",
+              border: "1px solid rgba(216,168,78,0.25)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 0 18px rgba(216,168,78,0.18)",
+              marginBottom: "2px",
+            }}>
+              <Upload size={18} color="#f1cd7b" />
+            </div>
+            <p style={{ fontSize: "14px", fontWeight: 600, color: "#fff", margin: 0 }}>
               {selectedFile && stage === "ERROR"
                 ? selectedFile.name
-                : "Drag & drop your PDF here"}
+                : "Drag & drop your jewellery quotation PDF here"}
             </p>
-            <p className="ms-dropzone-secondary">or</p>
-            <label className="ms-btn ms-btn--primary" htmlFor="pdf-input">
-              Choose PDF
+            <p style={{ fontSize: "12px", color: "#64748b", margin: 0 }}>or</p>
+            <label
+              style={{
+                display: "inline-flex", alignItems: "center", gap: "8px",
+                borderRadius: "9999px", padding: "9px 26px", fontSize: "13px", fontWeight: 700,
+                color: "#1a150b", border: "none", cursor: isProcessing ? "not-allowed" : "pointer",
+                background: "linear-gradient(135deg, #f1cd7b 0%, #e5ba6b 50%, #c5942a 100%)",
+                boxShadow: "0 4px 18px rgba(216,168,78,0.4)",
+                transition: "transform 0.15s, box-shadow 0.15s",
+              }}
+              className="hover:scale-[1.02]! active:scale-[0.98]!"
+              htmlFor="pdf-input"
+            >
+              Choose PDF File
               <input
                 id="pdf-input"
                 type="file"
@@ -426,7 +496,7 @@ export default function Home() {
                 disabled={isProcessing}
               />
             </label>
-            <p className="ms-dropzone-hint">PDF only · Max 100 MB</p>
+            <p style={{ fontSize: "11px", color: "#64748b", margin: "2px 0 0" }}>PDF only · Max 100 MB</p>
           </div>
         )}
 
@@ -468,147 +538,258 @@ export default function Home() {
 
             {/* ── REVIEW_GROUPS ── */}
             {stage === "REVIEW_GROUPS" && (
-              <div className="ms-review">
-                <p className="ms-review-summary">{stageDetail}</p>
+              <div className="ms-review" style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "2px" }}>
+                <p style={{ fontSize: "12px", color: "#94a3b8", textAlign: "center", margin: 0 }}>
+                  {stageDetail}
+                </p>
 
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: "1.5rem" }}>
-                  <div style={{ display: "flex", background: "var(--ms-bg)", padding: "0.4rem", borderRadius: "8px", border: "1px solid var(--ms-border)", gap: "0.4rem" }}>
+                {/* Controls Bar */}
+                <div style={{
+                  display: "flex", justifyContent: "center", alignItems: "center",
+                  gap: "10px", flexWrap: "wrap", margin: "2px 0",
+                }}>
+                  {/* Category / Melting toggle */}
+                  <div style={{
+                    display: "flex", background: "rgba(10, 15, 26, 0.8)",
+                    padding: "3px", borderRadius: "9999px",
+                    border: "1px solid rgba(255,255,255,0.08)", gap: "3px",
+                  }}>
                     <button
+                      type="button"
                       onClick={() => {
                         setSplitMode("category");
                         if (stage === "REVIEW_GROUPS" && rawRows.length > 0) {
                           setGroups(groupRows(rawRows, "category"));
                         }
                       }}
-                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: splitMode === "category" ? 600 : 400, background: splitMode === "category" ? "var(--ms-primary)" : "transparent", color: splitMode === "category" ? "#0b0f1a" : "var(--ms-text-2)", transition: "all 0.2s" }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: "6px",
+                        padding: "5px 14px", borderRadius: "9999px", border: "none",
+                        cursor: "pointer", fontSize: "12px",
+                        fontWeight: splitMode === "category" ? 700 : 500,
+                        background: splitMode === "category" ? "linear-gradient(135deg, #f1cd7b, #c5942a)" : "transparent",
+                        color: splitMode === "category" ? "#1a150b" : "#94a3b8",
+                        transition: "all 0.15s",
+                      }}
                     >
-                      <FolderTree size={16} /> Category
+                      <FolderTree size={13} /> Category
                     </button>
                     <button
+                      type="button"
                       onClick={() => {
                         setSplitMode("melting");
                         if (stage === "REVIEW_GROUPS" && rawRows.length > 0) {
                           setGroups(groupRows(rawRows, "melting"));
                         }
                       }}
-                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: splitMode === "melting" ? 600 : 400, background: splitMode === "melting" ? "var(--ms-primary)" : "transparent", color: splitMode === "melting" ? "#0b0f1a" : "var(--ms-text-2)", transition: "all 0.2s" }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: "6px",
+                        padding: "5px 14px", borderRadius: "9999px", border: "none",
+                        cursor: "pointer", fontSize: "12px",
+                        fontWeight: splitMode === "melting" ? 700 : 500,
+                        background: splitMode === "melting" ? "linear-gradient(135deg, #f1cd7b, #c5942a)" : "transparent",
+                        color: splitMode === "melting" ? "#1a150b" : "#94a3b8",
+                        transition: "all 0.15s",
+                      }}
                     >
-                      <Flame size={16} /> Melting
+                      <Flame size={13} /> Melting
                     </button>
                   </div>
-                  <p style={{ marginTop: "0.75rem", fontSize: "0.85rem", color: "var(--ms-text-2)" }}>
-                    {groups.length} {splitMode === "category" ? "categories" : "melting groups"} found • {outputMode === "combined" && groups.filter(g => g.selected !== false).length > 0 ? 1 : groups.filter(g => g.selected !== false).length} PDF{ (outputMode === "combined" && groups.filter(g => g.selected !== false).length > 0 ? 1 : groups.filter(g => g.selected !== false).length) !== 1 ? "s" : "" } will be generated
-                  </p>
-                </div>
 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "0.5rem" }}>
-                  <h3 style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--ms-text-1)", margin: 0, textTransform: "uppercase", letterSpacing: "0.05em" }}>Categories</h3>
-                  <div style={{ display: "flex", gap: "1rem" }}>
-                    <button onClick={() => setGroups(groups.map(g => ({ ...g, selected: true })))} style={{ background: "none", border: "none", color: "var(--ms-primary)", cursor: "pointer", fontSize: "0.85rem", padding: 0 }}>Select All</button>
-                    <button onClick={() => setGroups(groups.map(g => ({ ...g, selected: false })))} style={{ background: "none", border: "none", color: "var(--ms-text-2)", cursor: "pointer", fontSize: "0.85rem", padding: 0 }}>Clear All</button>
+                  {/* Individual / Combined toggle */}
+                  <div style={{
+                    display: "flex", background: "rgba(10, 15, 26, 0.8)",
+                    padding: "3px", borderRadius: "9999px",
+                    border: "1px solid rgba(255,255,255,0.08)", gap: "3px",
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => setOutputMode("individual")}
+                      style={{
+                        display: "flex", alignItems: "center", gap: "6px",
+                        padding: "5px 14px", borderRadius: "9999px", border: "none",
+                        cursor: "pointer", fontSize: "12px",
+                        fontWeight: outputMode === "individual" ? 700 : 500,
+                        background: outputMode === "individual" ? "linear-gradient(135deg, #f1cd7b, #c5942a)" : "transparent",
+                        color: outputMode === "individual" ? "#1a150b" : "#94a3b8",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      <FileText size={13} /> Individual
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOutputMode("combined")}
+                      style={{
+                        display: "flex", alignItems: "center", gap: "6px",
+                        padding: "5px 14px", borderRadius: "9999px", border: "none",
+                        cursor: "pointer", fontSize: "12px",
+                        fontWeight: outputMode === "combined" ? 700 : 500,
+                        background: outputMode === "combined" ? "linear-gradient(135deg, #f1cd7b, #c5942a)" : "transparent",
+                        color: outputMode === "combined" ? "#1a150b" : "#94a3b8",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      <Files size={13} /> Combined
+                    </button>
+                  </div>
+
+                  {/* Layout mode toggle */}
+                  <div style={{
+                    display: "flex", background: "rgba(10, 15, 26, 0.8)",
+                    padding: "3px", borderRadius: "9999px",
+                    border: "1px solid rgba(255,255,255,0.08)", gap: "3px",
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => setLayoutMode("standard")}
+                      style={{
+                        display: "flex", alignItems: "center", gap: "6px",
+                        padding: "5px 14px", borderRadius: "9999px", border: "none",
+                        cursor: "pointer", fontSize: "12px",
+                        fontWeight: layoutMode === "standard" ? 700 : 500,
+                        background: layoutMode === "standard" ? "linear-gradient(135deg, #f1cd7b, #c5942a)" : "transparent",
+                        color: layoutMode === "standard" ? "#1a150b" : "#94a3b8",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      <Layers size={13} /> Standard
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLayoutMode("production")}
+                      style={{
+                        display: "flex", alignItems: "center", gap: "6px",
+                        padding: "5px 14px", borderRadius: "9999px", border: "none",
+                        cursor: "pointer", fontSize: "12px",
+                        fontWeight: layoutMode === "production" ? 700 : 500,
+                        background: layoutMode === "production" ? "linear-gradient(135deg, #f1cd7b, #c5942a)" : "transparent",
+                        color: layoutMode === "production" ? "#1a150b" : "#94a3b8",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      <Zap size={13} /> Production
+                    </button>
                   </div>
                 </div>
 
-                <div className="ms-group-table-wrapper" style={{ overflowX: "auto", marginBottom: "1.5rem", border: "1px solid var(--ms-border)", borderRadius: "8px" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "0.85rem" }}>
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid var(--ms-border)", color: "var(--ms-text-2)" }}>
-                        <th style={{ padding: "0.75rem 1rem", width: "40px", textAlign: "center" }}></th>
-                        <th style={{ padding: "0.75rem 1rem", width: "40px" }}>Sr.</th>
-                        <th style={{ padding: "0.75rem 1rem" }}>{splitMode === "category" ? "Item Type" : "Melting"}</th>
-                        <th style={{ padding: "0.75rem 1rem", textAlign: "center" }}>Qty</th>
-                        <th style={{ padding: "0.75rem 1rem", textAlign: "right" }}>Gross Wt</th>
+                {/* Table Header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "2px 2px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#fff", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    {splitMode === "category" ? "Categories" : "Melting Groups"} ({groups.filter(g => g.selected !== false).length}/{groups.length})
+                  </span>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                    <button
+                      type="button"
+                      onClick={() => setGroups(groups.map(g => ({ ...g, selected: true })))}
+                      style={{ background: "none", border: "none", color: "#f1cd7b", cursor: "pointer", fontSize: "11px", fontWeight: 600, padding: 0 }}
+                    >
+                      Select All
+                    </button>
+                    <span style={{ color: "rgba(255,255,255,0.2)", fontSize: "10px" }}>•</span>
+                    <button
+                      type="button"
+                      onClick={() => setGroups(groups.map(g => ({ ...g, selected: false })))}
+                      style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "11px", padding: 0 }}
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                </div>
+
+                {/* Table Container with Internal Scroll */}
+                <div style={{
+                  maxHeight: "175px", overflowY: "auto",
+                  border: "1px solid rgba(255,255,255,0.08)", borderRadius: "10px",
+                  background: "#070b13",
+                }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "12px" }}>
+                    <thead style={{ position: "sticky", top: 0, background: "#0b101c", zIndex: 2 }}>
+                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", color: "#94a3b8" }}>
+                        <th style={{ padding: "7px 12px", width: "36px", textAlign: "center" }}></th>
+                        <th style={{ padding: "7px 10px", width: "36px" }}>Sr.</th>
+                        <th style={{ padding: "7px 12px" }}>{splitMode === "category" ? "Item Type" : "Melting"}</th>
+                        <th style={{ padding: "7px 12px", textAlign: "center" }}>Qty</th>
+                        <th style={{ padding: "7px 14px", textAlign: "right" }}>Gross Wt</th>
                       </tr>
                     </thead>
                     <tbody>
                       {groups.map((g, i) => {
                         const isSelected = g.selected !== false;
                         return (
-                          <tr 
-                            key={g.groupName} 
+                          <tr
+                            key={g.groupName}
                             onClick={() => {
                               const newGroups = [...groups];
                               newGroups[i].selected = !isSelected;
                               setGroups(newGroups);
                             }}
-                            style={{ 
-                              cursor: "pointer", 
-                              borderBottom: i === groups.length - 1 ? "none" : "1px solid var(--ms-border)", 
-                              background: isSelected ? "color-mix(in srgb, var(--ms-primary) 10%, transparent)" : "transparent",
-                              transition: "background 0.15s"
+                            style={{
+                              cursor: "pointer",
+                              borderBottom: i === groups.length - 1 ? "none" : "1px solid rgba(255,255,255,0.04)",
+                              background: isSelected ? "rgba(216,168,78,0.08)" : "transparent",
+                              transition: "background 0.15s",
                             }}
-                            onMouseEnter={(e) => {
-                              if (!isSelected) e.currentTarget.style.background = "var(--ms-bg)";
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!isSelected) e.currentTarget.style.background = "transparent";
-                            }}
+                            className="hover:bg-[rgba(255,255,255,0.03)]!"
                           >
-                            <td style={{ padding: "0.75rem 1rem", textAlign: "center", color: isSelected ? "var(--ms-primary)" : "var(--ms-text-3)" }}>
-                              {isSelected ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+                            <td style={{ padding: "5px 12px", textAlign: "center", color: isSelected ? "#f1cd7b" : "#64748b" }}>
+                              {isSelected ? <CheckCircle2 size={14} color="#f1cd7b" /> : <Circle size={14} color="#64748b" />}
                             </td>
-                            <td style={{ padding: "0.75rem 1rem", color: "var(--ms-text-2)" }}>{i + 1}</td>
-                            <td style={{ padding: "0.75rem 1rem", fontWeight: 500, color: "var(--ms-text-1)" }}>{g.groupName}</td>
-                            <td style={{ padding: "0.75rem 1rem", textAlign: "center" }}>{g.totalQty}</td>
-                            <td style={{ padding: "0.75rem 1rem", textAlign: "right", color: "var(--ms-text-2)" }}>{g.totalGrossWt.toFixed(3)}</td>
+                            <td style={{ padding: "5px 10px", color: "#64748b", fontSize: "11px" }}>{i + 1}</td>
+                            <td style={{ padding: "5px 12px", fontWeight: 500, color: "#f1f5f9" }}>{g.groupName}</td>
+                            <td style={{ padding: "5px 12px", textAlign: "center", color: "#cbd5e1" }}>{g.totalQty}</td>
+                            <td style={{ padding: "5px 14px", textAlign: "right", color: "#f1cd7b", fontWeight: 600 }}>{g.totalGrossWt.toFixed(3)}</td>
                           </tr>
                         );
                       })}
                     </tbody>
-                    <tfoot style={{ background: "var(--ms-bg)", borderTop: "2px solid var(--ms-border)", fontWeight: 600 }}>
+                    <tfoot style={{ position: "sticky", bottom: 0, background: "#0b101c", borderTop: "1px solid rgba(255,255,255,0.1)", fontWeight: 700, fontSize: "12px" }}>
                       <tr>
-                        <td colSpan={3} style={{ padding: "0.75rem 1rem", textAlign: "right" }}>Total</td>
-                        <td style={{ padding: "0.75rem 1rem", textAlign: "center" }}>{groups.reduce((acc, g) => acc + (g.selected !== false ? g.totalQty : 0), 0)}</td>
-                        <td style={{ padding: "0.75rem 1rem", textAlign: "right" }}>Approx. {groups.reduce((acc, g) => acc + (g.selected !== false ? g.totalGrossWt : 0), 0).toFixed(3)} gms</td>
+                        <td colSpan={3} style={{ padding: "7px 12px", textAlign: "right", color: "#94a3b8" }}>Selected Total:</td>
+                        <td style={{ padding: "7px 12px", textAlign: "center", color: "#fff" }}>
+                          {groups.reduce((acc, g) => acc + (g.selected !== false ? g.totalQty : 0), 0)}
+                        </td>
+                        <td style={{ padding: "7px 14px", textAlign: "right", color: "#f1cd7b" }}>
+                          {groups.reduce((acc, g) => acc + (g.selected !== false ? g.totalGrossWt : 0), 0).toFixed(3)} g
+                        </td>
                       </tr>
                     </tfoot>
                   </table>
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "center", marginBottom: "1.5rem", gap: "1rem", flexWrap: "wrap" }}>
-                  <div style={{ display: "flex", background: "var(--ms-bg)", padding: "0.4rem", borderRadius: "8px", border: "1px solid var(--ms-border)", gap: "0.4rem" }}>
-                    <button
-                      onClick={() => setOutputMode("individual")}
-                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: outputMode === "individual" ? 600 : 400, background: outputMode === "individual" ? "var(--ms-primary)" : "transparent", color: outputMode === "individual" ? "#0b0f1a" : "var(--ms-text-2)", transition: "all 0.2s" }}
-                    >
-                      <FileText size={16} /> Individual PDFs
-                    </button>
-                    <button
-                      onClick={() => setOutputMode("combined")}
-                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: outputMode === "combined" ? 600 : 400, background: outputMode === "combined" ? "var(--ms-primary)" : "transparent", color: outputMode === "combined" ? "#0b0f1a" : "var(--ms-text-2)", transition: "all 0.2s" }}
-                    >
-                      <Files size={16} /> Combined PDF
-                    </button>
-                  </div>
-
-                  <div style={{ display: "flex", background: "var(--ms-bg)", padding: "0.4rem", borderRadius: "8px", border: "1px solid var(--ms-border)", gap: "0.4rem" }}>
-                    <button
-                      onClick={() => setLayoutMode("standard")}
-                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: layoutMode === "standard" ? 600 : 400, background: layoutMode === "standard" ? "var(--ms-primary)" : "transparent", color: layoutMode === "standard" ? "#0b0f1a" : "var(--ms-text-2)", transition: "all 0.2s" }}
-                    >
-                      <Layers size={16} /> Standard Layout
-                    </button>
-                    <button
-                      onClick={() => setLayoutMode("production")}
-                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.5rem", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: layoutMode === "production" ? 600 : 400, background: layoutMode === "production" ? "var(--ms-primary)" : "transparent", color: layoutMode === "production" ? "#0b0f1a" : "var(--ms-text-2)", transition: "all 0.2s" }}
-                    >
-                      <Zap size={16} /> Production Layout
-                    </button>
-                  </div>
-                </div>
-
-                <div className="ms-review-actions">
+                {/* Actions */}
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "12px", marginTop: "6px" }}>
                   <button
                     id="btn-generate"
-                    className="ms-btn ms-btn--primary ms-btn--large"
+                    type="button"
                     onClick={handleGeneratePdfs}
+                    style={{
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      gap: "8px", borderRadius: "9999px",
+                      padding: "11px 40px", fontSize: "13.5px", fontWeight: 700,
+                      color: "#1a150b", border: "none", cursor: "pointer",
+                      background: "linear-gradient(135deg, #f1cd7b 0%, #e5ba6b 50%, #c5942a 100%)",
+                      boxShadow: "0 4px 20px rgba(216,168,78,0.45)",
+                      transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                    }}
+                    className="hover:shadow-[0_6px_30px_rgba(216,168,78,0.65)]! hover:scale-[1.02]! active:scale-[0.98]!"
                   >
-                    <Zap size={18} /> Generate PDFs
+                    <Zap size={15} />
+                    <span>Generate PDFs</span>
                   </button>
                   <button
                     id="btn-cancel"
-                    className="ms-btn ms-btn--ghost"
+                    type="button"
                     onClick={handleReset}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: "6px",
+                      borderRadius: "9999px", padding: "11px 22px", fontSize: "13px",
+                      fontWeight: 600, color: "#94a3b8", cursor: "pointer",
+                      background: "transparent",
+                      border: "1px solid rgba(255,255,255,0.09)",
+                      transition: "all 0.15s",
+                    }}
+                    className="hover:border-[rgba(255,255,255,0.18)]! hover:text-white! hover:bg-[rgba(255,255,255,0.03)]!"
                   >
                     Cancel
                   </button>
@@ -618,84 +799,142 @@ export default function Home() {
 
             {/* ── COMPLETED ── */}
             {stage === "COMPLETED" && processLog && (
-              <div className="ms-complete">
-                {/* Processing log */}
-                <div className="ms-log" role="region" aria-label="Processing summary">
-                  <div className="ms-log-row">
-                    <span className="ms-log-label">PDF rows parsed</span>
-                    <span className="ms-log-value">{processLog.totalRows}</span>
-                  </div>
-                  <div className="ms-log-divider" />
-
-                  <p className="ms-log-section">Groups</p>
-                  {processLog.groups.map(g => (
-                    <div key={g.groupName} className="ms-log-row">
-                      <span className="ms-log-label ms-log-label--indent">{g.groupName}</span>
-                      <span className="ms-log-value">{g.items.length} items</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%", marginTop: "2px" }}>
+                {/* Hero Banner */}
+                <div style={{
+                  background: "rgba(14, 20, 34, 0.88)",
+                  backdropFilter: "blur(20px)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: "14px",
+                  padding: "14px 20px",
+                  position: "relative",
+                  overflow: "hidden",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: "10px",
+                }}>
+                  <div style={{
+                    position: "absolute", top: 0, left: 0, right: 0, height: "1px",
+                    background: "linear-gradient(90deg, transparent, rgba(216,168,78,0.6), transparent)",
+                  }} />
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={{
+                      width: 40, height: 40, borderRadius: "10px", flexShrink: 0,
+                      background: "rgba(216,168,78,0.12)",
+                      border: "1.5px solid rgba(216,168,78,0.28)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      boxShadow: "0 0 18px rgba(216,168,78,0.2)",
+                    }}>
+                      <CheckCircle2 size={18} color="#f1cd7b" />
                     </div>
-                  ))}
-                  <div className="ms-log-divider" />
-                  
-                  <p className="ms-log-section">Images</p>
-                  <div className="ms-log-row">
-                    <span className="ms-log-label ms-log-label--indent">Catalogue</span>
-                    <span className="ms-log-value">{processLog.imageStats.catalogue}</span>
+                    <div>
+                      <h2 style={{ fontSize: "15px", fontWeight: 700, color: "#fff", margin: "0 0 2px" }}>
+                        Quotation PDFs Ready!
+                      </h2>
+                      <p style={{ fontSize: "12px", color: "#94a3b8", margin: 0 }}>
+                        Completed in <span style={{ color: "#f1cd7b", fontWeight: 600 }}>{processLog.elapsedSeconds.toFixed(1)}s</span> with {processLog.pdfsGenerated} PDF{processLog.pdfsGenerated !== 1 ? "s" : ""} generated
+                      </p>
+                    </div>
                   </div>
-                  <div className="ms-log-row">
-                    <span className="ms-log-label ms-log-label--indent">PDF Native</span>
-                    <span className="ms-log-value">{processLog.imageStats.native}</span>
-                  </div>
-                  <div className="ms-log-row">
-                    <span className="ms-log-label ms-log-label--indent">PDF Crop</span>
-                    <span className="ms-log-value">{processLog.imageStats.crop}</span>
-                  </div>
-                  <div className="ms-log-row">
-                    <span className="ms-log-label ms-log-label--indent">Missing</span>
-                    <span className="ms-log-value">{processLog.imageStats.missing}</span>
-                  </div>
-                  <div className="ms-log-divider" />
 
-
-                  <div className="ms-log-row">
-                    <span className="ms-log-label">PDFs generated</span>
-                    <span className="ms-log-value">{processLog.pdfsGenerated}</span>
+                  <div style={{
+                    display: "inline-flex", alignItems: "center", gap: "5px",
+                    padding: "4px 10px", borderRadius: "9999px",
+                    background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.25)",
+                    color: "#34d399", fontSize: "11px", fontWeight: 600,
+                  }}>
+                    <CheckCircle size={11} />
+                    <span>ZIP Archive Ready</span>
                   </div>
                 </div>
 
-                <div className="ms-complete-actions">
+                {/* 4 Stats Cards */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
+                  {[
+                    { label: "Rows Parsed", value: String(processLog.totalRows), gold: false },
+                    { label: "Groups", value: String(processLog.groups.length), gold: false },
+                    { label: "Images", value: String(processLog.imageStats.catalogue + processLog.imageStats.native + processLog.imageStats.crop), gold: false },
+                    { label: "PDFs Generated", value: String(processLog.pdfsGenerated), gold: true },
+                  ].map((s) => (
+                    <div key={s.label} style={{
+                      background: "rgba(14, 20, 34, 0.88)",
+                      border: s.gold ? "1px solid rgba(216,168,78,0.25)" : "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: "12px",
+                      padding: "10px 12px",
+                      textAlign: "center",
+                    }}>
+                      <p style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b", margin: "0 0 3px" }}>
+                        {s.label}
+                      </p>
+                      <p style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: s.gold ? "#f1cd7b" : "#fff" }}>
+                        {s.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Action Buttons */}
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px", marginTop: "4px", flexWrap: "wrap" }}>
                   <button
                     id="btn-download"
-                    className="ms-btn ms-btn--success ms-btn--large"
+                    type="button"
                     onClick={handleDownload}
+                    style={{
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      gap: "8px", borderRadius: "9999px",
+                      padding: "11px 36px", fontSize: "13.5px", fontWeight: 700,
+                      color: "#1a150b", border: "none", cursor: "pointer",
+                      background: "linear-gradient(135deg, #f1cd7b 0%, #e5ba6b 50%, #c5942a 100%)",
+                      boxShadow: "0 4px 20px rgba(216,168,78,0.45)",
+                      transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                    }}
+                    className="hover:shadow-[0_6px_28px_rgba(216,168,78,0.65)]! hover:scale-[1.02]! active:scale-[0.98]!"
                   >
-                    <FileDown size={18} /> Download ZIP
+                    <FileDown size={15} />
+                    <span>Download ZIP</span>
                   </button>
+
                   <button
                     id="btn-back-options"
-                    className="ms-btn ms-btn--primary"
+                    type="button"
                     onClick={() => {
                       setStage("REVIEW_GROUPS");
                       setZipBlob(null);
                       setProcessLog(null);
                     }}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: "6px",
+                      borderRadius: "9999px", padding: "11px 20px", fontSize: "12.5px",
+                      fontWeight: 600, color: "#cbd5e1", cursor: "pointer",
+                      background: "rgba(255,255,255,0.03)",
+                      border: "1px solid rgba(255,255,255,0.09)",
+                      transition: "all 0.15s",
+                    }}
+                    className="hover:border-[rgba(255,255,255,0.2)]! hover:text-white! hover:bg-[rgba(255,255,255,0.05)]!"
                   >
-                    Generate Another PDF
+                    <Layers size={13} />
+                    <span>Change Options</span>
                   </button>
+
                   <button
                     id="btn-start-over"
-                    className="ms-btn ms-btn--ghost"
+                    type="button"
                     onClick={handleReset}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: "6px",
+                      borderRadius: "9999px", padding: "11px 20px", fontSize: "12.5px",
+                      fontWeight: 600, color: "#94a3b8", cursor: "pointer",
+                      background: "transparent",
+                      border: "1px solid rgba(255,255,255,0.09)",
+                      transition: "all 0.15s",
+                    }}
+                    className="hover:border-[rgba(255,255,255,0.18)]! hover:text-[#e2e8f0]! hover:bg-[rgba(255,255,255,0.03)]!"
                   >
-                    Upload New PDF
+                    <RefreshCw size={13} />
+                    <span>Upload New PDF</span>
                   </button>
-                </div>
-
-                <div className="ms-complete-hero">
-                  <CheckCircle className="ms-complete-icon" />
-                  <h2 className="ms-complete-title">Done!</h2>
-                  <p className="ms-complete-time">
-                    Completed in {processLog.elapsedSeconds.toFixed(1)} s
-                  </p>
                 </div>
               </div>
             )}
@@ -727,6 +966,8 @@ export default function Home() {
               </button>
             </div>
           </div>
+        )}
+          </>
         )}
 
       </div>
